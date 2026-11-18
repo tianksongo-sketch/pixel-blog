@@ -16,7 +16,165 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-/** Input sudah di-escape server; URL http/https diubah jadi link biru, newline → <br/>. */
+function safeChar(cp: number): string {
+  if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff) return "";
+  if (cp < 32 && cp !== 9 && cp !== 10) return "";
+  try { return String.fromCodePoint(cp); } catch { return ""; }
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_, h) => safeChar(parseInt(h, 16)))
+    .replace(/&#(\d{1,7});/g, (_, d) => safeChar(parseInt(d, 10)))
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
+/* ---------- Sanitizer isi artikel (allowlist, dibangun ulang dari token) ---------- */
+const ALLOWED_TAGS = new Set([
+  "p", "br", "div", "b", "strong", "i", "em", "u", "s", "strike",
+  "h2", "h3", "h4", "ul", "ol", "li", "blockquote", "a", "img",
+  "figure", "figcaption", "hr", "code", "pre"
+]);
+const VOID_TAGS = new Set(["br", "img", "hr"]);
+const BAD_BLOCK = /<(script|style|iframe|object|embed|noscript|template|svg|math|form|input|button|textarea|select)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const BAD_TAIL = /<(script|style|iframe|object|embed|noscript|template|svg|math|form)\b[\s\S]*$/i;
+const ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'`=<>]+)))?/g;
+
+function parseAttrs(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  ATTR_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ATTR_RE.exec(raw))) {
+    const name = m[1].toLowerCase();
+    if (name.startsWith("on")) continue;
+    out[name] = m[2] ?? m[3] ?? m[4] ?? "";
+  }
+  return out;
+}
+
+function safeUrl(value: string, kind: "a" | "img"): string | null {
+  const s = decodeEntities(value).replace(/[\u0000-\u0020\u007F]/g, "");
+  if (!s) return null;
+  if (kind === "img" && /^\/api\/img\/[a-zA-Z0-9_-]{4,40}(?:\?v=\d{1,15})?$/.test(s)) return s;
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s);
+      if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+    } catch { return null; }
+    return null;
+  }
+  if (kind === "a" && /^mailto:[^<>"']{3,120}$/i.test(s)) return s;
+  return null;
+}
+
+export function sanitizeBody(input: string, maxLen = 200000): string {
+  let src = String(input ?? "").slice(0, maxLen);
+  src = src.replace(/<!--[\s\S]*?(?:-->|$)/g, "").replace(BAD_BLOCK, "").replace(BAD_TAIL, "");
+  const stack: string[] = [];
+  const out: string[] = [];
+  const re = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+  let last = 0;
+  let imgs = 0;
+  let m: RegExpExecArray | null;
+  const text = (t: string) => { if (t) out.push(escapeHtml(decodeEntities(t))); };
+  const closeTo = (tag: string) => {
+    const i = stack.lastIndexOf(tag);
+    if (i < 0) return;
+    while (stack.length > i) {
+      const t = stack.pop()!;
+      if (!VOID_TAGS.has(t)) out.push(`</${t}>`);
+    }
+  };
+  while ((m = re.exec(src))) {
+    text(src.slice(last, m.index));
+    last = m.index + m[0].length;
+    const closing = m[1] === "/";
+    const tag = m[2].toLowerCase();
+    if (!ALLOWED_TAGS.has(tag)) continue;
+    if (closing) { closeTo(tag); continue; }
+    if (stack.length > 24) continue;
+    const at = parseAttrs(m[3] || "");
+    if (tag === "img") {
+      if (imgs >= 40) continue;
+      const url = safeUrl(at.src || "", "img");
+      if (!url) continue;
+      imgs++;
+      const alt = escapeHtml(decodeEntities(at.alt || "").slice(0, 200));
+      out.push(`<img src="${escapeHtml(url)}" alt="${alt}" loading="lazy" decoding="async" />`);
+      continue;
+    }
+    if (tag === "a") {
+      const href = safeUrl(at.href || "", "a");
+      if (!href) continue;
+      while (stack.includes("a")) closeTo("a");
+      out.push(`<a href="${escapeHtml(href)}" class="link" target="_blank" rel="noopener noreferrer nofollow">`);
+      stack.push("a");
+      continue;
+    }
+    if (VOID_TAGS.has(tag)) { out.push(`<${tag} />`); continue; }
+    out.push(`<${tag}>`);
+    stack.push(tag);
+  }
+  text(src.slice(last));
+  while (stack.length) {
+    const t = stack.pop()!;
+    if (!VOID_TAGS.has(t)) out.push(`</${t}>`);
+  }
+  return out.join("");
+}
+
+export function htmlToText(html: string): string {
+  return String(html ?? "")
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|li|blockquote|figure|figcaption|pre)>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_, h) => safeChar(parseInt(h, 16)))
+    .replace(/&#(\d{1,7});/g, (_, d) => safeChar(parseInt(d, 10)))
+    .replace(/&nbsp;/gi, " ").replace(/&quot;/gi, '"').replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function bodyIsEmpty(html: string): boolean {
+  return htmlToText(html).length === 0 && !/<img\b/i.test(html);
+}
+
+export function readingMinutes(text: string): number {
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+}
+
+export function makeExcerpt(text: string, n = 160): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length <= n ? t : t.slice(0, n - 1).trimEnd() + "…";
+}
+
+export function formatDate(ts: number): string {
+  try {
+    return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  } catch { return ""; }
+}
+
+export function parseLabels(input: unknown): string[] {
+  const arr = Array.isArray(input) ? input : typeof input === "string" ? input.split(",") : [];
+  const out: string[] = [];
+  for (const raw of arr) {
+    const s = String(raw ?? "").replace(/[\u0000-\u001F\u007F<>"]/g, "").trim().slice(0, 24);
+    if (s && !out.some((x) => x.toLowerCase() === s.toLowerCase())) out.push(s);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+/* ---------- Komentar ---------- */
 export function commentHtml(escaped: string): string {
   const linked = escaped.replace(/https?:\/\/[^\s<]+/g, (raw) => {
     let m = raw;
@@ -38,10 +196,10 @@ export function timeAgo(ts: number): string {
   const d = Math.floor(h / 24);
   if (d === 1) return "kemarin";
   if (d < 7) return `${d} hari lalu`;
-  return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  return formatDate(ts);
 }
 
-/** Wajib http/https; tanpa skema → otomatis https://. Return null jika tidak valid. */
+/* ---------- Link ---------- */
 export function normalizeLink(input: string): string | null {
   let s = (input || "").trim();
   if (!s) return null;
@@ -52,6 +210,13 @@ export function normalizeLink(input: string): string | null {
     if (!u.hostname) return null;
     return u.href;
   } catch { return null; }
+}
+
+/** Link opsional: kosong = "", terisi tapi salah = null. */
+export function optionalLink(input: string): string | null {
+  const s = (input || "").trim();
+  if (!s) return "";
+  return normalizeLink(s);
 }
 
 export function hostOf(u: string): string {
