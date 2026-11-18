@@ -11,44 +11,74 @@ import { useApp } from "./Providers";
 
 type AdminPost = PostCard & { likes: number; comments: number; commentsList: Comment[] };
 type Sess = { demo: boolean; needsSetup: boolean; authed: boolean };
+type Diag = { demo: boolean; envTerbaca: string; indeks: number; zset: number; ditemukan: number; terbaca: number; perluPerbaiki: boolean; pesan: string };
 type CoverDraft = { b64: string; thumb: string; bytes: number };
 
 async function aj(url: string, method = "GET", body?: unknown) {
-  const r = await fetch(url, {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: "no-store"
-  });
-  const j = await r.json().catch(() => ({}));
-  return { ok: r.ok, status: r.status, j };
+  try {
+    const r = await fetch(url, {
+      method,
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: "no-store"
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, j };
+  } catch {
+    return { ok: false, status: 0, j: { error: "Tidak bisa menghubungi server." } };
+  }
 }
+
+const asAdminPost = (p: PostCard): AdminPost => ({ ...p, likes: 0, comments: 0, commentsList: [] });
 
 export function AdminApp() {
   const { snack } = useApp();
   const [sess, setSess] = useState<Sess | null>(null);
+  const [diag, setDiag] = useState<Diag | null>(null);
   const [posts, setPosts] = useState<AdminPost[]>([]);
-  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [tab, setTab] = useState<"all" | "published" | "draft">("all");
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<"new" | "top">("new");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<AdminPost | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [undo, setUndo] = useState<{ post: AdminPost; index: number } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     const s = await aj("/api/admin/auth");
-    if (!s.ok) { snack("Gagal memuat status admin"); return; }
+    if (!s.ok) { if (!quiet) snack(s.j.error || "Gagal memuat status admin"); return; }
     setSess(s.j as Sess);
-    if (s.j.authed) {
-      setLoadingPosts(true);
-      const p = await aj("/api/admin/posts");
-      if (p.ok) setPosts(p.j.posts || []);
-      setLoadingPosts(false);
-    }
+    if (!s.j.authed) return;
+    if (!quiet) setLoading(true);
+    const p = await aj("/api/admin/posts");
+    if (!quiet) setLoading(false);
+    if (p.ok) {
+      setPosts(Array.isArray(p.j.posts) ? p.j.posts : []);
+      if (p.j.diag) setDiag(p.j.diag as Diag);
+    } else if (!quiet) snack(p.j.error || "Gagal memuat daftar postingan");
   }, [snack]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
+  const upsert = useCallback((post: PostCard | null) => {
+    if (!post) return;
+    setPosts((prev) => {
+      const old = prev.find((x) => x.id === post.id);
+      const merged: AdminPost = old
+        ? { ...old, ...post, likes: old.likes, comments: old.comments, commentsList: old.commentsList }
+        : asAdminPost(post);
+      return [merged, ...prev.filter((x) => x.id !== post.id)];
+    });
+    setFresh(post.id);
+    setTimeout(() => setFresh((f) => (f === post.id ? null : f)), 2600);
+  }, []);
 
   const totals = useMemo(() => ({
     posts: posts.length,
@@ -56,7 +86,24 @@ export function AdminApp() {
     comments: posts.reduce((a, p) => a + p.comments, 0)
   }), [posts]);
 
-  const shown = useMemo(() => posts.filter((p) => tab === "all" || p.status === tab), [posts, tab]);
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return posts
+      .filter((p) => tab === "all" || p.status === tab)
+      .filter((p) => !needle || (p.title + " " + p.excerpt + " " + p.labels.join(" ")).toLowerCase().includes(needle))
+      .sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
+  }, [posts, tab, q, sort]);
+
+  const repair = async () => {
+    setRepairing(true);
+    const r = await aj("/api/admin/debug", "POST");
+    setRepairing(false);
+    if (r.ok) {
+      snack(`Indeks diperbaiki · ${r.j.tersimpan} postingan`);
+      if (r.j.diag) setDiag(r.j.diag as Diag);
+      await load(true);
+    } else snack(r.j.error || "Gagal memperbaiki indeks");
+  };
 
   const logout = async () => {
     await aj("/api/admin/auth", "POST", { action: "logout" });
@@ -65,15 +112,36 @@ export function AdminApp() {
     await load();
   };
 
-  const doDelete = async () => {
+  const commitDelete = useCallback(async (id: string) => {
+    const r = await aj(`/api/admin/posts/${id}`, "DELETE");
+    if (!r.ok) { snack(r.j.error || "Gagal menghapus"); await load(true); }
+  }, [snack, load]);
+
+  const doDelete = () => {
     if (!confirmDel) return;
     const target = confirmDel;
     setConfirmDel(null);
+    const index = posts.findIndex((p) => p.id === target.id);
     setPosts((prev) => prev.filter((p) => p.id !== target.id));
-    const r = await aj(`/api/admin/posts/${target.id}`, "DELETE");
-    if (r.ok) snack("Postingan dihapus");
-    else snack(r.j.error || "Gagal menghapus");
-    await load();
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ post: target, index: index < 0 ? 0 : index });
+    undoTimer.current = setTimeout(() => {
+      setUndo(null);
+      void commitDelete(target.id);
+    }, 6000);
+  };
+
+  const undoDelete = () => {
+    if (!undo) return;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    const { post, index } = undo;
+    setPosts((prev) => {
+      const next = prev.filter((p) => p.id !== post.id);
+      next.splice(Math.min(index, next.length), 0, post);
+      return next;
+    });
+    setUndo(null);
+    snack("Penghapusan dibatalkan");
   };
 
   const delComment = async (post: string, cid: string) => {
@@ -82,17 +150,15 @@ export function AdminApp() {
       : p));
     const r = await aj("/api/admin/comments", "DELETE", { post, cid });
     if (r.ok) snack("Komentar dihapus");
-    else snack(r.j.error || "Gagal menghapus komentar");
-    await load();
+    else { snack(r.j.error || "Gagal menghapus komentar"); await load(true); }
   };
 
   const toggleStatus = async (p: AdminPost) => {
     const next = p.status === "published" ? "draft" : "published";
     setPosts((prev) => prev.map((x) => x.id === p.id ? { ...x, status: next } : x));
     const r = await aj(`/api/admin/posts/${p.id}`, "PUT", { status: next });
-    if (r.ok) snack(next === "published" ? "Dipublikasikan" : "Disimpan sebagai draf");
-    else snack(r.j.error || "Gagal mengubah status");
-    await load();
+    if (r.ok) { upsert(r.j.post); snack(next === "published" ? "Dipublikasikan" : "Disimpan sebagai draf"); void load(true); }
+    else { snack(r.j.error || "Gagal mengubah status"); await load(true); }
   };
 
   return (
@@ -110,10 +176,37 @@ export function AdminApp() {
             <Btn variant="text" className="b-danger" onClick={() => void logout()}><Icon name="logout" size={18} />Keluar</Btn>
           </div>
 
+          {diag && !diag.demo && (
+            <div className="storage-chip">
+              <Icon name={diag.perluPerbaiki ? "database_off" : "database"} size={18} />
+              <span>
+                Redis tersambung · <b>{diag.terbaca}</b> terbaca · <b>{diag.ditemukan}</b> tersimpan
+                {diag.perluPerbaiki && " · indeks perlu diperbaiki"}
+              </span>
+              {(diag.perluPerbaiki || diag.terbaca === 0) && (
+                <Btn variant="tonal" disabled={repairing} onClick={() => void repair()}>
+                  <Icon name="build" size={16} />{repairing ? "Memperbaiki…" : "Perbaiki indeks"}
+                </Btn>
+              )}
+            </div>
+          )}
+
           <div className="stat-strip">
             <div className="stat-box"><b>{totals.posts}</b><span><Icon name="article" size={14} />Postingan</span></div>
             <div className="stat-box"><b>{totals.likes}</b><span><Icon name="favorite" size={14} />Suka</span></div>
             <div className="stat-box"><b>{totals.comments}</b><span><Icon name="chat_bubble" size={14} />Komentar</span></div>
+          </div>
+
+          <div className="feed-tools">
+            <div className="search-pill">
+              <Icon name="search" size={20} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari judul, isi, atau label…" aria-label="Cari postingan" />
+              {q && <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setQ("")} aria-label="Bersihkan pencarian"><Icon name="close" size={18} /></button>}
+            </div>
+            <div className="sort-toggle">
+              <button className={sort === "new" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("new")}><Icon name="schedule" size={16} />Terbaru</button>
+              <button className={sort === "top" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("top")}><Icon name="favorite" size={16} />Terpopuler</button>
+            </div>
           </div>
 
           <div className="filter-row">
@@ -122,18 +215,31 @@ export function AdminApp() {
             <LabelChip label={`Draf (${posts.filter((p) => p.status === "draft").length})`} active={tab === "draft"} onClick={() => setTab("draft")} />
           </div>
 
-          {loadingPosts ? (
+          <AnimatePresence>
+            {undo && (
+              <motion.div className="undo-bar" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={SPRING_SOFT}>
+                <Icon name="delete" size={18} />
+                <span>“{undo.post.title}” dihapus…</span>
+                <Btn variant="text" onClick={undoDelete}><Icon name="undo" size={16} />Urungkan</Btn>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {loading ? (
             <div className="admin-list"><Skel h={88} r={24} /><Skel h={88} r={24} /><Skel h={88} r={24} /></div>
           ) : shown.length === 0 ? (
             <div className="empty">
-              <Icon name="post_add" size={48} />
-              <p style={{ marginTop: 10 }}>{tab === "draft" ? "Tidak ada draf." : "Belum ada postingan. Ketuk “Tulis”."}</p>
+              <Icon name={posts.length ? "search_off" : "post_add"} size={48} />
+              <p style={{ marginTop: 10 }}>
+                {posts.length ? "Tidak ada yang cocok dengan filter ini." : tab === "draft" ? "Tidak ada draf." : "Belum ada postingan. Ketuk “Tulis”."}
+              </p>
+              {!posts.length && diag?.demo && <p style={{ marginTop: 6, fontSize: 13 }}>Mode demo aktif — sambungkan Upstash dulu agar postingan tersimpan permanen.</p>}
             </div>
           ) : (
             <div className="admin-list">
               <AnimatePresence initial={false}>
                 {shown.map((p) => (
-                  <motion.div key={p.id} className="admin-item" layout
+                  <motion.div key={p.id} className={`admin-item${fresh === p.id ? " fresh" : ""}`} layout
                     initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.97 }} transition={SPRING_SOFT}>
                     <div className="admin-row">
@@ -153,7 +259,7 @@ export function AdminApp() {
                           {p.link && <a className="link" href={p.link} target="_blank" rel="noopener noreferrer nofollow">{hostOf(p.link)}</a>}
                         </div>
                       </div>
-                      <Btn variant="icon" aria-label="Ubah status" onClick={() => void toggleStatus(p)}>
+                      <Btn variant="icon" aria-label={p.status === "draft" ? "Publikasikan" : "Jadikan draf"} onClick={() => void toggleStatus(p)}>
                         <Icon name={p.status === "draft" ? "publish" : "unpublished"} size={20} />
                       </Btn>
                       <Btn variant="icon" aria-label="Edit" onClick={() => { setEditingId(p.id); setEditorOpen(true); }}>
@@ -174,9 +280,7 @@ export function AdminApp() {
                           {p.commentsList.map((c) => (
                             <div className="admin-cm" key={c.id}>
                               <Avatar name={c.name} size={28} />
-                              <span className="admin-cm-text">
-                                <strong>{c.name}:</strong> <span dangerouslySetInnerHTML={{ __html: commentHtml(c.text) }} />
-                              </span>
+                              <span className="admin-cm-text"><strong>{c.name}:</strong> <span dangerouslySetInnerHTML={{ __html: commentHtml(c.text) }} /></span>
                               <Btn variant="icon" className="b-danger" aria-label="Hapus komentar" onClick={() => void delComment(p.id, c.id)}>
                                 <Icon name="close" size={18} />
                               </Btn>
@@ -191,28 +295,24 @@ export function AdminApp() {
             </div>
           )}
 
-          <motion.button
-            className="fab fab-admin" onPointerDown={attachRipple}
+          <motion.button className="fab fab-admin" onPointerDown={attachRipple}
             onClick={() => { setEditingId(null); setEditorOpen(true); }}
             initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 480, damping: 28, delay: 0.15 }}
-            aria-label="Tulis postingan"
-          >
+            transition={{ type: "spring", stiffness: 480, damping: 28, delay: 0.15 }} aria-label="Tulis postingan">
             <Icon name="edit_note" size={24} />Tulis
           </motion.button>
         </>
       )}
 
-      <Editor open={editorOpen} postId={editingId} onClose={() => setEditorOpen(false)} onSaved={load} />
+      <Editor open={editorOpen} postId={editingId} onClose={() => setEditorOpen(false)}
+        onSaved={async (post) => { upsert(post); await load(true); }} />
       <PwDialog open={pwOpen} onClose={() => setPwOpen(false)} />
-      <Dialog
-        open={!!confirmDel} onClose={() => setConfirmDel(null)} icon="delete" title="Hapus postingan?"
-        text={`“${confirmDel?.title ?? ""}” beserta foto, suka, dan komentarnya akan dihapus permanen.`}
+      <Dialog open={!!confirmDel} onClose={() => setConfirmDel(null)} icon="delete" title="Hapus postingan?"
+        text={`“${confirmDel?.title ?? ""}” beserta foto, suka, dan komentarnya akan dihapus. Kamu punya 6 detik untuk mengurungkan.`}
         actions={<>
           <Btn variant="text" onClick={() => setConfirmDel(null)}>Batal</Btn>
-          <Btn variant="filled" style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={() => void doDelete()}>Hapus</Btn>
-        </>}
-      />
+          <Btn variant="filled" style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={doDelete}>Hapus</Btn>
+        </>} />
     </main>
   );
 }
@@ -222,9 +322,8 @@ function DemoBanner() {
     <div className="banner">
       <Icon name="cloud_off" size={22} />
       <div>
-        <strong>Mode demo — database belum tersambung.</strong> Data hanya di memori dan tidak permanen.
-        Sambungkan: Vercel → proyekmu → <strong>Storage</strong> → <strong>Create Database</strong> →{" "}
-        <strong>Upstash for Redis</strong> (Free) → <strong>Connect Project</strong> → <strong>Redeploy</strong>.
+        <strong>Mode demo — Upstash belum tersambung.</strong> Postingan hanya masuk memori sementara dan hilang saat server tidur.
+        Sambungkan: Vercel → proyekmu → <strong>Storage</strong> → <strong>Create Database</strong> → <strong>Upstash for Redis</strong> (Free) → <strong>Connect Project</strong> → <strong>Redeploy</strong>.
       </div>
     </div>
   );
@@ -239,8 +338,7 @@ function PwInput({ label, value, onChange, onEnter, autoFocus }: {
       <span className="field-label">{label}</span>
       <div style={{ position: "relative" }}>
         <input className="input" type={show ? "text" : "password"} value={value} autoFocus={autoFocus}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") onEnter?.(); }}
+          onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onEnter?.(); }}
           style={{ paddingRight: 52 }} aria-label={label} />
         <button className="btn b-icon" type="button" onPointerDown={attachRipple}
           style={{ position: "absolute", right: 6, top: 6 }} onClick={() => setShow(!show)}
@@ -335,7 +433,7 @@ function PwDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function Editor({ open, postId, onClose, onSaved }: {
-  open: boolean; postId: string | null; onClose: () => void; onSaved: () => Promise<void>;
+  open: boolean; postId: string | null; onClose: () => void; onSaved: (post: PostCard | null) => Promise<void>;
 }) {
   const { snack } = useApp();
   const [loading, setLoading] = useState(false);
@@ -386,7 +484,6 @@ function Editor({ open, postId, onClose, onSaved }: {
     setLabels((prev) => prev.length >= 5 || prev.some((x) => x.toLowerCase() === s.toLowerCase()) ? prev : [...prev, s]);
     setLabelDraft("");
   };
-
   const onLabelKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addLabel(labelDraft); }
     else if (e.key === "Backspace" && !labelDraft) setLabels((prev) => prev.slice(0, -1));
@@ -422,11 +519,11 @@ function Editor({ open, postId, onClose, onSaved }: {
       ? await aj(`/api/admin/posts/${postId}`, "PUT", payload)
       : await aj("/api/admin/posts", "POST", payload);
     setBusy(false);
-    if (r.ok) {
+    if (r.ok && r.j.post) {
       snack(publish ? "Postingan dipublikasikan" : "Draf tersimpan");
       onClose();
-      await onSaved();
-    } else setErr(r.j.error || "Gagal menyimpan");
+      await onSaved(r.j.post as PostCard);
+    } else setErr(r.j.error || "Gagal menyimpan. Coba lagi.");
   };
 
   const coverPreview = cover ? `data:image/webp;base64,${cover.b64}` : (!coverRemoved ? existingCover : null);
@@ -435,7 +532,6 @@ function Editor({ open, postId, onClose, onSaved }: {
     <Sheet open={open} onClose={onClose} title={postId ? "Edit postingan" : "Buat postingan"}>
       <input ref={fileRef} type="file" accept="image/*" hidden
         onChange={(e) => { void pickCover(e.target.files?.[0]); e.target.value = ""; }} />
-
       {loading ? (
         <div style={{ display: "grid", gap: 12, paddingBottom: 20 }}>
           <Skel h={40} r={10} /><Skel h={220} r={22} /><Skel h={44} r={16} />
