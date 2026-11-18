@@ -9,8 +9,8 @@ import { Footer } from "@/components/Footer";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: { default: "Pixel Blog", template: "%s · Pixel Blog" },
-  description: "Blog pribadi dengan gaya Material You ala Google Pixel.",
+  title: { default: "F4KUYY", template: "%s · F4KUYY" },
+  description: "Catatan, cerita, dan hal-hal yang layak dibagikan — dengan gaya Material You ala Google Pixel.",
   icons: { icon: "/favicon.svg" }
 };
 
