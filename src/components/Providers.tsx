@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { applyThemeDom, updateThemeMetas, type Mode } from "@/lib/theme";
@@ -31,6 +31,8 @@ async function postJson(url: string, body: unknown): Promise<Response> {
   return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
+const ERR = /gagal|tidak bisa|menolak|error|salah|terlalu/i;
+
 export function Providers({ initial, children }: { initial: Initial; children: ReactNode }) {
   const router = useRouter();
   const [seed, setSeed] = useState(initial.seed);
@@ -51,11 +53,10 @@ export function Providers({ initial, children }: { initial: Initial; children: R
 
   useEffect(() => {
     if (!snackMsg) return;
-    const t = setTimeout(() => setSnackMsg(null), 3400);
+    const t = setTimeout(() => setSnackMsg(null), 3600);
     return () => clearTimeout(t);
   }, [snackMsg]);
 
-  /* Snackbar izin cookie kunjungan pertama */
   useEffect(() => {
     if (initial.consent !== null) return;
     const t = setTimeout(() => setConsentSheet(true), 900);
@@ -63,7 +64,6 @@ export function Providers({ initial, children }: { initial: Initial; children: R
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* Meta theme-color mengikuti skema aktif */
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => updateThemeMetas(seedRef.current, modeRef.current);
@@ -72,7 +72,6 @@ export function Providers({ initial, children }: { initial: Initial; children: R
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  /* Shortcut rahasia admin: Ctrl/Cmd + Shift + A */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "A" || e.key === "a")) {
@@ -152,7 +151,12 @@ export function Providers({ initial, children }: { initial: Initial; children: R
     }
   }, []);
 
-  const state: AppState = { seed, mode, consent, name, hasVid, setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName };
+  /* Memo: konsumen tidak lagi re-render tiap snackbar muncul. */
+  const state = useMemo<AppState>(() => ({
+    seed, mode, consent, name, hasVid, setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName
+  }), [seed, mode, consent, name, hasVid, setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName]);
+
+  const bad = !!snackMsg && ERR.test(snackMsg.msg);
 
   return (
     <Ctx.Provider value={state}>
@@ -160,19 +164,20 @@ export function Providers({ initial, children }: { initial: Initial; children: R
         {children}
         <ThemeFab />
 
-        {/* Snackbar */}
         <AnimatePresence>
           {snackMsg && (
-            <motion.div key={snackMsg.id} className="snackbar" role="status"
+            <motion.div
+              key={snackMsg.id} className="snackbar" role={bad ? "alert" : "status"}
+              style={bad ? { background: "var(--md-error-container)", color: "var(--md-on-error-container)" } : undefined}
               initial={{ opacity: 0, y: 24, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }} transition={{ type: "spring", stiffness: 560, damping: 34 }}>
-              <Icon name="check_circle" size={20} />
+              exit={{ opacity: 0, y: 12, scale: 0.98 }} transition={{ type: "spring", stiffness: 560, damping: 34 }}
+            >
+              <Icon name={bad ? "error" : "check_circle"} size={20} />
               {snackMsg.msg}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Consent kunjungan pertama */}
         <Sheet open={consentSheet} onClose={() => { denyConsent(); setConsentSheet(false); }} title="Cookie dulu, ya?">
           <p style={{ color: "var(--md-on-surface-variant)", fontSize: 14.5 }}>
             Izinkan cookie untuk menyimpan warna, nama, dan like kamu?
@@ -183,7 +188,6 @@ export function Providers({ initial, children }: { initial: Initial; children: R
           </div>
         </Sheet>
 
-        {/* Dialog izin saat like/komentar tanpa cookie */}
         <Dialog
           open={consentDlg} onClose={() => { setConsentDlg(false); pendingRef.current = null; }}
           icon="cookie" title="Butuh izin cookie"
