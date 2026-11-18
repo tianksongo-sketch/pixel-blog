@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
 import { getFeed } from "@/lib/db";
 import { Glance, TopAppBar } from "@/components/TopAppBar";
-import { PostCard } from "@/components/PostCard";
-import { Icon } from "@/components/ui";
+import { FeedView } from "@/components/FeedView";
 
 export const dynamic = "force-dynamic";
 
@@ -11,19 +10,10 @@ export default async function Home() {
   const posts = await getFeed(vid);
   return (
     <>
-      <TopAppBar title="Pixel Blog" large />
+      <TopAppBar title="F4KUYY" large />
       <main className="container page">
         <Glance />
-        {posts.length > 0 ? (
-          <div className="feed-grid">
-            {posts.map((p, i) => <PostCard key={p.id} post={p} index={i} />)}
-          </div>
-        ) : (
-          <div className="empty">
-            <Icon name="photo_library" size={56} />
-            <p style={{ marginTop: 12 }}>Belum ada postingan. Buka halaman admin untuk mulai menulis.</p>
-          </div>
-        )}
+        <FeedView posts={posts} />
       </main>
     </>
   );
