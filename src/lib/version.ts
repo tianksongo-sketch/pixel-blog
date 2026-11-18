@@ -1,2 +1,2 @@
-export const BUILD = "fix-6";
-export const BUILD_LABEL = "v6";
+export const BUILD = "fix-7";
+export const BUILD_LABEL = "v7";
