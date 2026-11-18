@@ -13,6 +13,8 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
   const savedRange = useRef<Range | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
+  const changeRef = useRef(onChange);
+  changeRef.current = onChange;
   const [words, setWords] = useState(0);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState({ bold: false, italic: false, underline: false });
@@ -21,24 +23,48 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
   const [linkUrl, setLinkUrl] = useState("");
   const [linkErr, setLinkErr] = useState("");
 
+  const emit = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const html = el.innerHTML;
+    const t = htmlToText(html);
+    setWords(t ? t.split(/\s+/).filter(Boolean).length : 0);
+    changeRef.current(html);
+  }, []);
+
+  /* Isi awal dipasang saat mount/keyed remount, lalu langsung dilaporkan ke parent. */
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.innerHTML = initialHtml || "";
-    const t = htmlToText(el.innerHTML);
-    setWords(t ? t.split(/\s+/).filter(Boolean).length : 0);
     savedRange.current = null;
     setActive({ bold: false, italic: false, underline: false });
+    emit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorKey]);
 
-  const emit = useCallback(() => {
+  /* Jaring pengaman: apa pun yang terjadi di DOM (ketik, tempel, autofill,
+     perintah format, hapus) selalu tersinkron ke state parent. */
+  useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const t = htmlToText(el.innerHTML);
-    setWords(t ? t.split(/\s+/).filter(Boolean).length : 0);
-    onChange(el.innerHTML);
-  }, [onChange]);
+    let raf = 0;
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; emit(); }); };
+    const mo = new MutationObserver(schedule);
+    mo.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
+    el.addEventListener("input", schedule);
+    el.addEventListener("keyup", schedule);
+    el.addEventListener("cut", schedule);
+    el.addEventListener("paste", schedule);
+    return () => {
+      mo.disconnect();
+      el.removeEventListener("input", schedule);
+      el.removeEventListener("keyup", schedule);
+      el.removeEventListener("cut", schedule);
+      el.removeEventListener("paste", schedule);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [emit, editorKey]);
 
   const saveSelection = useCallback(() => {
     const el = ref.current;
@@ -225,4 +251,4 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
       </Dialog>
     </div>
   );
-}
+      }
