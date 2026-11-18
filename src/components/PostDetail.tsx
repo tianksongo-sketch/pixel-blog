@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
@@ -21,11 +21,18 @@ type Props = {
 
 export function PostDetail({ post, stats, comments, newer, older }: Props) {
   const router = useRouter();
-  const imgRef = useParallax<HTMLImageElement>(10);
+  const parallax = useParallax<HTMLImageElement>(10);
   const barRef = useRef<HTMLDivElement>(null);
   const [showTop, setShowTop] = useState(false);
-  const [coverLoaded, setCoverLoaded] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
   const emptyBody = !post.body || !post.body.replace(/<[^>]*>/g, "").trim();
+  const showPhoto = post.hasCover && !failed;
+
+  const attachImg = useCallback((el: HTMLImageElement | null) => {
+    parallax.current = el;
+    if (el && el.complete && el.naturalWidth > 0) setReady(true);
+  }, [parallax]);
 
   useEffect(() => {
     let raf = 0;
@@ -86,14 +93,29 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
         </div>
 
         {post.hasCover && (
-          <figure className="article-hero" style={{ viewTransitionName: `post-img-${post.id}` } as CSSProperties}>
-            {post.thumb && <span className="lqip" style={{ backgroundImage: `url("${post.thumb}")` }} aria-hidden="true" />}
-            <img
-              ref={imgRef} src={`/api/img/${post.id}?v=${post.ver}`} alt={post.title}
-              decoding="async" fetchPriority="high"
-              className={coverLoaded ? "loaded" : ""} onLoad={() => setCoverLoaded(true)}
-              onError={() => setCoverLoaded(true)}
-            />
+          <figure
+            className={`article-hero${ready ? " ready" : ""}`}
+            style={{ viewTransitionName: `post-img-${post.id}` } as CSSProperties}
+          >
+            {showPhoto ? (
+              <>
+                {post.thumb && <span className={`lqip${ready ? " gone" : ""}`} style={{ backgroundImage: `url("${post.thumb}")` }} aria-hidden="true" />}
+                <img
+                  ref={attachImg}
+                  src={`/api/img/${post.id}?v=${post.ver}`}
+                  alt={post.title}
+                  decoding="async" fetchPriority="high"
+                  onLoad={() => setReady(true)}
+                  onError={() => { setFailed(true); setReady(true); }}
+                />
+              </>
+            ) : (
+              <span className="cover-fallback">
+                <span className="cover-mesh" aria-hidden="true" />
+                <Icon name="broken_image" size={34} />
+                <span className="cover-word">Foto tidak tersedia</span>
+              </span>
+            )}
           </figure>
         )}
 
@@ -105,8 +127,8 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
 
         {emptyBody ? (
           <div className="article-empty">
-            <Icon name="edit_note" size={22} />
-            <span>Postingan ini belum punya isi teks. Buka panel admin, ketuk edit, lalu tulis isinya — sekarang isi ikut tersimpan otomatis.</span>
+            <Icon name="article" size={24} />
+            <p>Artikel ini tidak memiliki isi.</p>
           </div>
         ) : (
           <div className="article-body" dangerouslySetInnerHTML={{ __html: post.body }} />
