@@ -14,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
   const p = await getFull(id);
-  if (!p) return { title: "Tidak ditemukan" };
+  if (!p || p.deletedAt) return { title: "Tidak ditemukan" };
   const base = siteUrl();
   const url = `${base}/post/${id}`;
   const img = p.hasCover ? `${base}/api/img/${id}?v=${p.ver}` : null;
