@@ -19,8 +19,9 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
   return (
     <motion.article
       className="card"
-      initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 420, damping: 32, delay: Math.min(index * 0.045, 0.36) }}
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32, delay: Math.min(index * 0.04, 0.3) }}
       onPointerEnter={() => warm(router, href)}
     >
       <Link
@@ -35,6 +36,7 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
               ref={imgRef} src={`/api/img/${post.id}?v=${post.ver}`} alt={post.title}
               loading={index < 3 ? "eager" : "lazy"} decoding="async"
               className={loaded ? "loaded" : ""} onLoad={() => setLoaded(true)}
+              onError={() => setLoaded(true)}
             />
           </>
         ) : (
