@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from "react";
 import { compressImage } from "@/lib/img";
-import { htmlToText, readingMinutes, sanitizeBody } from "@/lib/utils";
+import { htmlToText, sanitizeBody } from "@/lib/utils";
 import { attachRipple, Btn, Dialog, Icon } from "./ui";
 import { useApp } from "./Providers";
 
@@ -28,6 +28,7 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
     const t = htmlToText(el.innerHTML);
     setWords(t ? t.split(/\s+/).filter(Boolean).length : 0);
     savedRange.current = null;
+    setActive({ bold: false, italic: false, underline: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorKey]);
 
@@ -60,13 +61,11 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
           italic: document.queryCommandState("italic"),
           underline: document.queryCommandState("underline")
         });
-      } catch { /* abaikan */ }
+      } catch { /* browser lama */ }
     };
     document.addEventListener("selectionchange", onSel);
     return () => document.removeEventListener("selectionchange", onSel);
   }, [saveSelection]);
-
-  const focusEditor = () => { ref.current?.focus(); };
 
   const restore = () => {
     const el = ref.current;
@@ -104,8 +103,7 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
   const openLink = () => {
     saveSelection();
     const sel = window.getSelection();
-    const selected = sel && sel.rangeCount ? sel.toString() : "";
-    setLinkText(selected);
+    setLinkText(sel && sel.rangeCount ? sel.toString() : "");
     setLinkUrl("");
     setLinkErr("");
     setLinkOpen(true);
@@ -116,13 +114,11 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
     const text = linkText.trim();
     if (!url) { setLinkErr("Isi dulu link-nya."); return; }
     if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) url = "https://" + url;
-    if (!/^https?:\/\/[^\s]+\.[^\s]+/i.test(url) && !/^mailto:[^@\s]+@[^@\s]+/i.test(url)) {
-      setLinkErr("Link tidak valid. Contoh: contoh.com/artikel");
-      return;
-    }
+    const valid = /^https?:\/\/[^\s]+\.[^\s]+/i.test(url) || /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+/i.test(url);
+    if (!valid) { setLinkErr("Link tidak valid. Contoh: contoh.com/artikel"); return; }
     const safe = sanitizeBody(`<a href="${url.replace(/"/g, "&quot;")}">${(text || url).replace(/[<>]/g, "")}</a>`);
     setLinkOpen(false);
-    setTimeout(() => insertHtml(safe + "&nbsp;"), 30);
+    setTimeout(() => insertHtml(safe + "&nbsp;"), 40);
   };
 
   const upload = async (file: File | undefined) => {
@@ -146,18 +142,15 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
     }
   };
 
-  const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     const html = e.clipboardData.getData("text/html");
     const plain = e.clipboardData.getData("text/plain");
     if (html) insertHtml(sanitizeBody(html));
-    else if (plain) {
-      const esc = plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
-      insertHtml(esc);
-    }
+    else if (plain) insertHtml(plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>"));
   };
 
-  const tools = [
+  const tools: Array<{ icon: string; label: string; run: () => void; on: boolean } | { sep: true }> = [
     { icon: "photo_camera", label: "Kamera", run: () => camRef.current?.click(), on: false },
     { icon: "image", label: "Galeri", run: () => fileRef.current?.click(), on: false },
     { sep: true },
@@ -171,12 +164,16 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
     { icon: "format_quote", label: "Kutipan", run: () => exec("formatBlock", "<blockquote>"), on: false },
     { icon: "horizontal_rule", label: "Garis", run: () => exec("insertHorizontalRule"), on: false },
     { icon: "undo", label: "Urungkan", run: () => exec("undo"), on: false }
-  ] as Array<{ icon: string; label: string; run: () => void; on: boolean } | { sep: true }>;
+  ];
+
+  const minutes = Math.max(1, Math.round(words / 200));
 
   return (
     <div className="rt-wrap">
-      <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
-      <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={camRef} type="file" accept="image/*" capture="environment" hidden
+        onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={fileRef} type="file" accept="image/*" hidden
+        onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
 
       <div className="editor-card">
         <div
@@ -184,11 +181,12 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
           role="textbox" aria-multiline="true" aria-label="Isi postingan"
           data-placeholder="Mulai tulis postinganmu…"
           onInput={emit} onBlur={() => { saveSelection(); emit(); }} onKeyUp={saveSelection}
-          onMouseUp={saveSelection} onPaste={onPaste} onFocus={focusEditor}
+          onMouseUp={saveSelection} onPaste={onPaste}
         />
         <div className="rt-meta">
-          {busy ? <span className="rt-uploading"><Icon name="cloud_upload" size={16} />Mengunggah foto…</span>
-            : <span>{words} kata · {readingMinutes(words ? "x".repeat(words) : "")} mnt baca</span>}
+          {busy
+            ? <span className="rt-uploading"><Icon name="cloud_upload" size={16} />Mengunggah foto…</span>
+            : <span>{words} kata · {minutes} mnt baca</span>}
         </div>
       </div>
 
@@ -196,12 +194,10 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
         {tools.map((t, i) => "sep" in t ? (
           <span className="tool-sep" key={`s${i}`} />
         ) : (
-          <button
-            key={t.label} type="button" className={`tool-btn${t.on ? " on" : ""}`}
+          <button key={t.label} type="button" className={`tool-btn${t.on ? " on" : ""}`}
             aria-label={t.label} aria-pressed={t.on} title={t.label}
             onPointerDown={(e) => { e.preventDefault(); attachRipple(e); }}
-            onClick={t.run} disabled={busy}
-          >
+            onClick={t.run} disabled={busy}>
             <Icon name={t.icon} size={22} />
           </button>
         ))}
