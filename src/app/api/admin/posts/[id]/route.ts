@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deletePost, getFull, updatePost, type Cover, type PostInput, type PostStatus } from "@/lib/db";
+import { deletePost, getFull, purgePost, restorePost, updatePost, type Cover, type PostInput, type PostStatus } from "@/lib/db";
 import { isAuthed } from "@/lib/auth";
 import { optionalLink, parseLabels, sanitizeBody, sniffMime } from "@/lib/utils";
 
@@ -64,12 +64,35 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   }
 }
 
+/** action: "restore" | "purge" */
+export async function POST(req: NextRequest, { params }: Ctx) {
+  if (!(await isAuthed())) return NextResponse.json({ error: "Tidak diizinkan" }, { status: 401 });
+  const { id } = await params;
+  const b = await req.json().catch(() => ({}));
+  const action = String(b.action ?? "");
+  try {
+    if (action === "restore") {
+      const post = await restorePost(id);
+      if (!post) return NextResponse.json({ error: "Postingan tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, post });
+    }
+    if (action === "purge") {
+      await purgePost(id);
+      return NextResponse.json({ ok: true });
+    }
+    return NextResponse.json({ error: "Aksi tidak dikenal" }, { status: 400 });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal memproses." }, { status: 500 });
+  }
+}
+
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   if (!(await isAuthed())) return NextResponse.json({ error: "Tidak diizinkan" }, { status: 401 });
   const { id } = await params;
   try {
-    await deletePost(id);
-    return NextResponse.json({ ok: true });
+    const post = await deletePost(id);
+    if (!post) return NextResponse.json({ error: "Postingan tidak ditemukan" }, { status: 404 });
+    return NextResponse.json({ ok: true, post });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal menghapus." }, { status: 500 });
   }
