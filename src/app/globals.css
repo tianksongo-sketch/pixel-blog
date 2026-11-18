@@ -132,7 +132,7 @@ button { font: inherit; color: inherit; }
 .sort-toggle .on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
 .filter-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 12px; scrollbar-width: none; }
 .filter-row::-webkit-scrollbar { display: none; }
-.feed-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.feed-grid { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
 @media (min-width: 720px) { .feed-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1080px) { .feed-grid { grid-template-columns: repeat(3, 1fr); } }
 
@@ -146,7 +146,11 @@ button { font: inherit; color: inherit; }
 .chip-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
 
 /* ============ Kartu ============ */
-.card { background: var(--md-surface-container-low); border-radius: 28px; content-visibility: auto; contain-intrinsic-size: 460px; position: relative; transition: background-color 0.4s; height: 100%; display: flex; flex-direction: column; }
+.card {
+  background: var(--md-surface-container-low); border-radius: 28px;
+  position: relative; transition: background-color 0.4s; height: 100%;
+  display: flex; flex-direction: column;
+}
 .card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 8px 22px rgba(0,0,0,0.16); opacity: 0; transition: opacity 0.3s; }
 .card:hover::after { opacity: 1; }
 .card-media { display: block; margin: 8px; border-radius: 20px; overflow: hidden; aspect-ratio: 4 / 3; position: relative; flex: none; background: linear-gradient(100deg, var(--md-surface-container) 40%, var(--md-surface-container-highest) 50%, var(--md-surface-container) 60%); background-size: 200% 100%; animation: px-shimmer 1.4s linear infinite; }
@@ -203,6 +207,7 @@ button { font: inherit; color: inherit; }
 .article-body pre { background: var(--md-surface-container-high); padding: 16px 18px; border-radius: 18px; overflow-x: auto; }
 .article-body pre code { background: none; padding: 0; }
 .article-body b, .article-body strong { font-weight: 700; }
+.article-empty { margin-top: 22px; padding: 18px 20px; border-radius: 22px; background: var(--md-surface-container-low); color: var(--md-on-surface-variant); font-size: 14.5px; display: flex; gap: 12px; align-items: flex-start; }
 
 .share-row { margin-top: 30px; padding: 18px 0; border-top: 1px solid var(--md-outline-variant); border-bottom: 1px solid var(--md-outline-variant); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .share-row-label { font-weight: 800; font-size: 14.5px; flex: none; }
@@ -339,9 +344,10 @@ button { font: inherit; color: inherit; }
 /* ============ Admin ============ */
 .banner { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 24px; background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); font-size: 13.5px; line-height: 1.5; margin-bottom: 16px; }
 .banner .ms { margin-top: 2px; }
-.storage-chip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 999px; background: var(--md-surface-container-low); color: var(--md-on-surface-variant); font-size: 12.8px; margin-bottom: 14px; border: 1px solid var(--md-outline-variant); }
+.storage-chip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 20px; background: var(--md-surface-container-low); color: var(--md-on-surface-variant); font-size: 12.8px; margin-bottom: 14px; border: 1px solid var(--md-outline-variant); }
 .storage-chip b { color: var(--md-on-surface); }
-.storage-chip .btn { min-height: 32px; font-size: 12.5px; padding: 0 14px; margin-left: auto; }
+.storage-chip span { flex: 1; min-width: 140px; }
+.storage-chip .btn { min-height: 32px; font-size: 12.5px; padding: 0 14px; }
 .undo-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-radius: 999px; background: var(--md-error-container); color: var(--md-on-error-container); font-size: 13.5px; font-weight: 600; margin-bottom: 12px; }
 .undo-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .undo-bar .btn { color: inherit; min-height: 34px; }
