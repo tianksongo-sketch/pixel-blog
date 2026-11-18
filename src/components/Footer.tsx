@@ -1,6 +1,7 @@
 "use client";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
+import { BUILD, BUILD_LABEL } from "@/lib/version";
 import { useApp } from "./Providers";
 
 export function Footer() {
@@ -23,6 +24,9 @@ export function Footer() {
       <span className="copy" role="button" tabIndex={0} onClick={onTap}
         onKeyDown={(e) => { if (e.key === "Enter") onTap(); }} aria-label="Hak cipta">©</span>
       {" 2026 F4KUYY · Material You"}
+      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.6 }} data-build={BUILD} title="Versi build yang sedang tayang">
+        build {BUILD_LABEL}
+      </div>
     </footer>
   );
 }
