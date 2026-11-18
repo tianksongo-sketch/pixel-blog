@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED = ["image/webp", "image/jpeg", "image/png", "image/gif"];
 
-export function validCover(input: unknown): Cover | null | undefined {
+function parseCover(input: unknown): Cover | null | undefined {
   if (input === undefined) return undefined;
   if (input === null) return null;
   const o = input as { b64?: unknown; thumb?: unknown };
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const link = optionalLink(String(b.link ?? ""));
   if (link === null) return NextResponse.json({ error: "Link luar tidak valid. Kosongkan saja kalau tidak perlu." }, { status: 400 });
   const body = sanitizeBody(String(b.body ?? ""));
-  const cover = validCover(b.cover);
+  const cover = parseCover(b.cover);
   if (b.cover !== undefined && b.cover !== null && cover === undefined) {
     return NextResponse.json({ error: "Foto sampul tidak valid (maks ±450 KB)." }, { status: 400 });
   }
