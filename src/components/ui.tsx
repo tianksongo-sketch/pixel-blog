@@ -4,12 +4,10 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode, type PointerEvent as RPointerEvent, type ButtonHTMLAttributes } from "react";
 import { clamp, reducedMotion } from "@/lib/utils";
 
-/* ---------- Ikon ---------- */
 export function Icon({ name, fill = false, size = 24, className = "" }: { name: string; fill?: boolean; size?: number; className?: string }) {
   return <span aria-hidden="true" className={`ms${fill ? " ms-fill" : ""} ${className}`} style={{ fontSize: size }}>{name}</span>;
 }
 
-/* ---------- Ripple (dipasang di onPointerDown) ---------- */
 export function attachRipple(ev: RPointerEvent<HTMLElement>) {
   if (reducedMotion()) return;
   const el = ev.currentTarget;
@@ -24,15 +22,10 @@ export function attachRipple(ev: RPointerEvent<HTMLElement>) {
   span.addEventListener("animationend", () => span.remove());
 }
 
-/* ---------- Tombol M3 ---------- */
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "filled" | "tonal" | "text" | "outlined" | "elevated" | "icon" };
 export function Btn({ variant = "text", className = "", children, onPointerDown, ...rest }: BtnProps) {
   return (
-    <button
-      className={`btn b-${variant} ${className}`}
-      onPointerDown={(e) => { attachRipple(e); onPointerDown?.(e); }}
-      {...rest}
-    >
+    <button className={`btn b-${variant} ${className}`} onPointerDown={(e) => { attachRipple(e); onPointerDown?.(e); }} {...rest}>
       {children}
     </button>
   );
@@ -41,7 +34,6 @@ export function Btn({ variant = "text", className = "", children, onPointerDown,
 export const SPRING = { type: "spring" as const, stiffness: 520, damping: 33 };
 export const SPRING_SOFT = { type: "spring" as const, stiffness: 420, damping: 36 };
 
-/* ---------- Dialog M3 ---------- */
 export function Dialog({ open, onClose, title, icon, text, children, actions }: {
   open: boolean; onClose: () => void; title: string; icon?: string; text?: string; children?: ReactNode; actions: ReactNode;
 }) {
@@ -58,12 +50,12 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
     <AnimatePresence>
       {open && (
         <>
-          <motion.div className="scrim" style={{ zIndex: 69 }} initial={{ opacity: 0 }} animate={{ opacity: 0.45 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onClick={onClose} />
+          <motion.div className="scrim" style={{ zIndex: 69 }} initial={{ opacity: 0 }} animate={{ opacity: 0.45 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} onClick={onClose} />
           <div className="dialog-wrap">
             <motion.div
               ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="dialog"
-              initial={{ opacity: 0, scale: 0.86, y: 26 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: 14 }} transition={SPRING}
+              initial={{ opacity: 0, scale: 0.88, y: 22 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 10 }} transition={SPRING}
             >
               {icon && <div className="dialog-icon"><Icon name={icon} size={28} /></div>}
               <h2 className="dialog-title">{title}</h2>
@@ -79,7 +71,6 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
   );
 }
 
-/* ---------- Bottom sheet (drag-to-dismiss dari handle) ---------- */
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const controls = useDragControls();
   useEffect(() => {
@@ -93,7 +84,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     <AnimatePresence>
       {open && (
         <>
-          <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 0.45 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }} onClick={onClose} />
+          <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 0.45 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onClick={onClose} />
           <motion.div
             className="sheet" role="dialog" aria-modal="true" aria-label={title}
             drag="y" dragListener={false} dragControls={controls}
@@ -112,7 +103,6 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   );
 }
 
-/* ---------- Angka rolling (odometer) ---------- */
 export function RollingNumber({ value }: { value: number }) {
   const digits = String(Math.max(0, value)).split("");
   return (
@@ -124,9 +114,7 @@ export function RollingNumber({ value }: { value: number }) {
               key={d} className="roll-digit"
               initial={{ y: "0.95em", opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: "-0.95em", opacity: 0 }}
               transition={{ type: "spring", stiffness: 620, damping: 36 }}
-            >
-              {d}
-            </motion.span>
+            >{d}</motion.span>
           </AnimatePresence>
         </span>
       ))}
@@ -134,7 +122,6 @@ export function RollingNumber({ value }: { value: number }) {
   );
 }
 
-/* ---------- Avatar cookie/scallop M3 ---------- */
 export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   const initial = (name.trim()[0] || "?").toUpperCase();
   const n = 12, cx = 24, cy = 24, ro = 19.5, ri = 17;
@@ -152,12 +139,41 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   );
 }
 
-/* ---------- Skeleton ---------- */
 export function Skel({ h = 16, w = "100%", r = 12, className = "" }: { h?: number; w?: string | number; r?: number; className?: string }) {
   return <div className={`skel ${className}`} style={{ height: h, width: w, borderRadius: r }} />;
 }
 
-/* ---------- Parallax halus untuk foto ---------- */
+export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button" role="switch" aria-checked={checked} aria-label={label}
+      className={`switch${checked ? " on" : ""}`} onClick={() => onChange(!checked)}
+    >
+      <motion.span className="knob" layout transition={{ type: "spring", stiffness: 700, damping: 34 }}>
+        {checked && <Icon name="check" size={14} />}
+      </motion.span>
+    </button>
+  );
+}
+
+export function LabelChip({ label, onClick, active = false, onRemove }: { label: string; onClick?: () => void; active?: boolean; onRemove?: () => void }) {
+  if (onRemove) {
+    return (
+      <span className="label-chip solid">
+        {label}
+        <button type="button" className="chip-x" aria-label={`Hapus label ${label}`} onClick={onRemove}>
+          <Icon name="close" size={14} />
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button type="button" className={`label-chip${active ? " active" : ""}`} onPointerDown={attachRipple} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
 export function useParallax<T extends HTMLElement>(strength = 10) {
   const ref = useRef<T | null>(null);
   useEffect(() => {
@@ -173,7 +189,7 @@ export function useParallax<T extends HTMLElement>(strength = 10) {
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
       const p = clamp((r.top + r.height / 2 - vh / 2) / vh, -1, 1);
-      el.style.transform = `translateY(${(p * strength).toFixed(1)}px) scale(1.1)`;
+      el.style.transform = `translateY(${(p * strength).toFixed(1)}px) scale(1.08)`;
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
