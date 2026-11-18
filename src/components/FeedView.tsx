@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import type { PostWithStats } from "@/lib/db";
 import { attachRipple, Icon, LabelChip } from "./ui";
 import { PostCard } from "./PostCard";
@@ -23,7 +23,7 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
       if (!needle) return true;
       return (p.title + " " + p.excerpt + " " + p.labels.join(" ")).toLowerCase().includes(needle);
     });
-    return out.sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
+    return [...out].sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
   }, [posts, q, label, sort]);
 
   return (
@@ -63,16 +63,21 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
           <p style={{ marginTop: 12 }}>
             {posts.length ? "Tidak ada yang cocok. Coba kata lain atau hapus filter." : "Belum ada postingan. Buka panel admin untuk mulai menulis."}
           </p>
+          {posts.length > 0 && (q || label) && (
+            <button className="btn b-tonal" style={{ marginTop: 14 }} onPointerDown={attachRipple}
+              onClick={() => { setQ(""); setLabel(null); }}>
+              <Icon name="filter_alt_off" size={18} />Hapus filter
+            </button>
+          )}
         </div>
       ) : (
+        /* Tanpa AnimatePresence/popLayout: kartu selalu tampil pada render pertama. */
         <motion.div className="feed-grid" layout>
-          <AnimatePresence mode="popLayout">
-            {shown.map((p, i) => (
-              <motion.div key={p.id} layout exit={{ opacity: 0, scale: 0.97 }} transition={{ duration: 0.2 }}>
-                <PostCard post={p} index={i} onLabel={(l) => setLabel(l)} />
-              </motion.div>
-            ))}
-          </AnimatePresence>
+          {shown.map((p, i) => (
+            <motion.div key={p.id} layout initial={{ opacity: 1 }} animate={{ opacity: 1 }} style={{ minWidth: 0 }}>
+              <PostCard post={p} index={i} onLabel={(l) => setLabel(l)} />
+            </motion.div>
+          ))}
         </motion.div>
       )}
     </>
