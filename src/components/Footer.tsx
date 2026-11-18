@@ -20,14 +20,9 @@ export function Footer() {
 
   return (
     <footer className="footer">
-      <span
-        className="copy" role="button" tabIndex={0} onClick={onTap}
-        onKeyDown={(e) => { if (e.key === "Enter") onTap(); }}
-        aria-label="Hak cipta"
-      >
-        ©
-      </span>
-      {" 2026 Pixel Blog · Material You"}
+      <span className="copy" role="button" tabIndex={0} onClick={onTap}
+        onKeyDown={(e) => { if (e.key === "Enter") onTap(); }} aria-label="Hak cipta">©</span>
+      {" 2026 F4KUYY · Material You"}
     </footer>
   );
 }
