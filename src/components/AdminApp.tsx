@@ -4,17 +4,20 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import type { Comment, PostCard } from "@/lib/db";
 import { compressImage, makeThumb } from "@/lib/img";
-import { commentHtml, formatDate, hostOf } from "@/lib/utils";
+import { commentHtml, formatDate, hostOf, timeAgo } from "@/lib/utils";
 import { BUILD_LABEL } from "@/lib/version";
 import { attachRipple, Avatar, Btn, Dialog, Icon, LabelChip, Sheet, Skel, Switch, SPRING_SOFT } from "./ui";
 import { RichEditor } from "./RichEditor";
 import { useApp } from "./Providers";
 
 type AdminPost = PostCard & { likes: number; comments: number; commentsList: Comment[] };
+type TrashPost = PostCard & { likes: number; comments: number };
 type Sess = { demo: boolean; needsSetup: boolean; authed: boolean };
-type Diag = { demo: boolean; envTerbaca: string; indeks: number; zset: number; ditemukan: number; terbaca: number; perluPerbaiki: boolean; pesan: string };
+type Diag = { demo: boolean; indeks: number; zset: number; ditemukan: number; terbaca: number; sampah: number; perluPerbaiki: boolean };
 type CoverDraft = { b64: string; thumb: string; bytes: number };
 type LocalDraft = { title: string; body: string; labels: string[]; link: string; publish: boolean; ts: number };
+
+const UNDO_MS = 10000;
 
 async function aj(url: string, method = "GET", body?: unknown) {
   try {
@@ -49,20 +52,23 @@ export function AdminApp() {
   const [sess, setSess] = useState<Sess | null>(null);
   const [diag, setDiag] = useState<Diag | null>(null);
   const [posts, setPosts] = useState<AdminPost[]>([]);
+  const [trash, setTrash] = useState<TrashPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [repairing, setRepairing] = useState(false);
-  const [tab, setTab] = useState<"all" | "published" | "draft">("all");
+  const [tab, setTab] = useState<"all" | "published" | "draft" | "trash">("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"new" | "top">("new");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<AdminPost | null>(null);
+  const [confirmPurge, setConfirmPurge] = useState<TrashPost | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ post: AdminPost; index: number } | null>(null);
+  const [undo, setUndo] = useState<TrashPost | null>(null);
+  const [undoLeft, setUndoLeft] = useState(10);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDel = useRef<string | null>(null);
+  const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const recent = useRef<Map<string, number>>(new Map());
 
   const load = useCallback(async (quiet = false) => {
@@ -82,31 +88,31 @@ export function AdminApp() {
           if (now - ts > 60000) { recent.current.delete(id); return; }
           if (!merged.some((x) => x.id === id)) {
             const local = prev.find((x) => x.id === id);
-            if (local) merged.unshift(local);
+            if (local && !local.deletedAt) merged.unshift(local);
           }
         });
         return merged.sort((a, b) => b.createdAt - a.createdAt);
       });
+      setTrash(Array.isArray(p.j.trash) ? p.j.trash : []);
       if (p.j.diag) setDiag(p.j.diag as Diag);
     } else if (!quiet) snack(p.j.error || "Gagal memuat daftar postingan");
   }, [snack]);
 
   useEffect(() => { void load(); }, [load]);
-
-  /* Kalau halaman ditutup saat undo masih menunggu, penghapusan tetap diselesaikan. */
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    const id = pendingDel.current;
-    if (id) {
-      try {
-        void fetch(`/api/admin/posts/${id}`, { method: "DELETE", keepalive: true });
-      } catch { /* abaikan */ }
-    }
+    if (tickTimer.current) clearInterval(tickTimer.current);
   }, []);
 
   const upsert = useCallback((post: PostCard | null) => {
     if (!post) return;
+    if (post.deletedAt) {
+      setPosts((prev) => prev.filter((x) => x.id !== post.id));
+      setTrash((prev) => [{ ...post, likes: 0, comments: 0 }, ...prev.filter((x) => x.id !== post.id)]);
+      return;
+    }
     recent.current.set(post.id, Date.now());
+    setTrash((prev) => prev.filter((x) => x.id !== post.id));
     setPosts((prev) => {
       const old = prev.find((x) => x.id === post.id);
       const merged: AdminPost = old
@@ -124,13 +130,17 @@ export function AdminApp() {
     comments: posts.reduce((a, p) => a + p.comments, 0)
   }), [posts]);
 
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return posts
-      .filter((p) => tab === "all" || p.status === tab)
-      .filter((p) => !needle || (p.title + " " + p.excerpt + " " + p.labels.join(" ")).toLowerCase().includes(needle))
-      .sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
-  }, [posts, tab, q, sort]);
+  const needle = q.trim().toLowerCase();
+  const matches = useCallback((p: PostCard) =>
+    !needle || (p.title + " " + p.excerpt + " " + p.labels.join(" ")).toLowerCase().includes(needle), [needle]);
+
+  const shown = useMemo(() => posts
+    .filter((p) => tab === "all" || p.status === tab)
+    .filter(matches)
+    .sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt),
+  [posts, tab, matches, sort]);
+
+  const shownTrash = useMemo(() => trash.filter(matches), [trash, matches]);
 
   const repair = async () => {
     setRepairing(true);
@@ -138,49 +148,81 @@ export function AdminApp() {
     setRepairing(false);
     if (r.ok) {
       snack(`Indeks diperbaiki · ${r.j.tersimpan} postingan`);
-      if (r.j.diag) setDiag(r.j.diag as Diag);
       await load(true);
     } else snack(r.j.error || "Gagal memperbaiki indeks");
   };
 
   const logout = async () => {
     await aj("/api/admin/auth", "POST", { action: "logout" });
-    setPosts([]);
+    setPosts([]); setTrash([]);
     snack("Kamu sudah keluar");
     await load();
   };
 
-  const commitDelete = useCallback(async (id: string) => {
-    pendingDel.current = null;
-    recent.current.delete(id);
-    const r = await aj(`/api/admin/posts/${id}`, "DELETE");
-    if (!r.ok) { snack(r.j.error || "Gagal menghapus"); await load(true); }
-  }, [snack, load]);
+  const startUndo = (p: TrashPost) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (tickTimer.current) clearInterval(tickTimer.current);
+    setUndo(p);
+    setUndoLeft(Math.round(UNDO_MS / 1000));
+    tickTimer.current = setInterval(() => setUndoLeft((v) => Math.max(0, v - 1)), 1000);
+    undoTimer.current = setTimeout(() => {
+      setUndo(null);
+      if (tickTimer.current) clearInterval(tickTimer.current);
+    }, UNDO_MS);
+  };
 
-  const doDelete = () => {
+  const closeUndo = () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (tickTimer.current) clearInterval(tickTimer.current);
+    setUndo(null);
+  };
+
+  /* Hapus langsung ke server. Refresh kapan pun tetap konsisten. */
+  const doDelete = async () => {
     if (!confirmDel) return;
     const target = confirmDel;
     setConfirmDel(null);
-    const index = posts.findIndex((p) => p.id === target.id);
+    recent.current.delete(target.id);
     setPosts((prev) => prev.filter((p) => p.id !== target.id));
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    pendingDel.current = target.id;
-    setUndo({ post: target, index: index < 0 ? 0 : index });
-    undoTimer.current = setTimeout(() => { setUndo(null); void commitDelete(target.id); }, 6000);
+    const r = await aj(`/api/admin/posts/${target.id}`, "DELETE");
+    if (r.ok && r.j.post) {
+      const t: TrashPost = { ...r.j.post, likes: target.likes, comments: target.comments };
+      setTrash((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
+      startUndo(t);
+      void load(true);
+    } else {
+      setPosts((prev) => [target, ...prev.filter((p) => p.id !== target.id)].sort((a, b) => b.createdAt - a.createdAt));
+      snack(r.j.error || "Gagal menghapus");
+    }
   };
 
-  const undoDelete = () => {
+  const restore = async (id: string, quiet = false) => {
+    const r = await aj(`/api/admin/posts/${id}`, "POST", { action: "restore" });
+    if (r.ok && r.j.post) {
+      upsert(r.j.post as PostCard);
+      if (!quiet) snack("Postingan dikembalikan");
+      void load(true);
+      return true;
+    }
+    snack(r.j.error || "Gagal mengembalikan");
+    return false;
+  };
+
+  const undoDelete = async () => {
     if (!undo) return;
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    pendingDel.current = null;
-    const { post, index } = undo;
-    setPosts((prev) => {
-      const next = prev.filter((p) => p.id !== post.id);
-      next.splice(Math.min(index, next.length), 0, post);
-      return next;
-    });
-    setUndo(null);
-    snack("Penghapusan dibatalkan");
+    const id = undo.id;
+    closeUndo();
+    await restore(id);
+  };
+
+  const doPurge = async () => {
+    if (!confirmPurge) return;
+    const target = confirmPurge;
+    setConfirmPurge(null);
+    setTrash((prev) => prev.filter((p) => p.id !== target.id));
+    const r = await aj(`/api/admin/posts/${target.id}`, "POST", { action: "purge" });
+    if (r.ok) { snack("Dihapus permanen"); void load(true); }
+    else { setTrash((prev) => [target, ...prev]); snack(r.j.error || "Gagal menghapus permanen"); }
   };
 
   const delComment = async (post: string, cid: string) => {
@@ -224,10 +266,10 @@ export function AdminApp() {
             <div className="storage-chip">
               <Icon name={diag.perluPerbaiki ? "database_off" : "database"} size={18} />
               <span>
-                Redis tersambung · <b>{diag.terbaca}</b> terbaca · <b>{diag.ditemukan}</b> tersimpan
+                Redis tersambung · <b>{diag.terbaca}</b> aktif · <b>{diag.sampah ?? trash.length}</b> di sampah
                 {diag.perluPerbaiki && " · indeks perlu diperbaiki"}
               </span>
-              {(diag.perluPerbaiki || diag.terbaca === 0) && (
+              {diag.perluPerbaiki && (
                 <Btn variant="tonal" disabled={repairing} onClick={() => void repair()}>
                   <Icon name="build" size={16} />{repairing ? "Memperbaiki…" : "Perbaiki indeks"}
                 </Btn>
@@ -247,30 +289,70 @@ export function AdminApp() {
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari judul, isi, atau label…" aria-label="Cari postingan" />
               {q && <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setQ("")} aria-label="Bersihkan pencarian"><Icon name="close" size={18} /></button>}
             </div>
-            <div className="sort-toggle">
-              <button className={sort === "new" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("new")}><Icon name="schedule" size={16} />Terbaru</button>
-              <button className={sort === "top" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("top")}><Icon name="favorite" size={16} />Terpopuler</button>
-            </div>
+            {tab !== "trash" && (
+              <div className="sort-toggle">
+                <button className={sort === "new" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("new")}><Icon name="schedule" size={16} />Terbaru</button>
+                <button className={sort === "top" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("top")}><Icon name="favorite" size={16} />Terpopuler</button>
+              </div>
+            )}
           </div>
 
           <div className="filter-row">
             <LabelChip label={`Semua (${posts.length})`} active={tab === "all"} onClick={() => setTab("all")} />
             <LabelChip label={`Terpublikasi (${posts.filter((p) => p.status === "published").length})`} active={tab === "published"} onClick={() => setTab("published")} />
             <LabelChip label={`Draf (${posts.filter((p) => p.status === "draft").length})`} active={tab === "draft"} onClick={() => setTab("draft")} />
+            <LabelChip label={`Sampah (${trash.length})`} active={tab === "trash"} onClick={() => setTab("trash")} />
           </div>
 
           <AnimatePresence>
             {undo && (
               <motion.div className="undo-bar" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={SPRING_SOFT}>
                 <Icon name="delete" size={18} />
-                <span>“{undo.post.title}” dihapus…</span>
-                <Btn variant="text" onClick={undoDelete}><Icon name="undo" size={16} />Urungkan</Btn>
+                <span>“{undo.title}” dipindah ke sampah · {undoLeft}s</span>
+                <Btn variant="text" onClick={() => void undoDelete()}><Icon name="undo" size={16} />Urungkan</Btn>
+                <Btn variant="icon" aria-label="Tutup" onClick={closeUndo}><Icon name="close" size={18} /></Btn>
               </motion.div>
             )}
           </AnimatePresence>
 
           {loading ? (
             <div className="admin-list"><Skel h={88} r={24} /><Skel h={88} r={24} /><Skel h={88} r={24} /></div>
+          ) : tab === "trash" ? (
+            shownTrash.length === 0 ? (
+              <div className="empty">
+                <Icon name="delete_outline" size={48} />
+                <p style={{ marginTop: 10 }}>Tempat sampah kosong.</p>
+              </div>
+            ) : (
+              <div className="admin-list">
+                <AnimatePresence initial={false}>
+                  {shownTrash.map((p) => (
+                    <motion.div key={p.id} className="admin-item" layout
+                      initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.97 }} transition={SPRING_SOFT}>
+                      <div className="admin-row">
+                        {p.hasCover
+                          ? <img className="thumb" src={`/api/img/${p.id}?v=${p.ver}`} alt="" loading="lazy" decoding="async" />
+                          : <span className="thumb-fallback"><Icon name="delete" size={24} /></span>}
+                        <div className="admin-info">
+                          <div className="admin-title">{p.title}</div>
+                          <div className="admin-sub">
+                            <span className="badge-draft"><Icon name="delete" size={13} />Sampah</span>
+                            <span suppressHydrationWarning>dihapus {timeAgo(p.deletedAt)}</span>
+                            <span className="admin-stat"><Icon name="favorite" size={15} />{p.likes}</span>
+                            <span className="admin-stat"><Icon name="chat_bubble" size={15} />{p.comments}</span>
+                          </div>
+                        </div>
+                        <Btn variant="tonal" onClick={() => void restore(p.id)}><Icon name="restore_from_trash" size={18} />Kembalikan</Btn>
+                        <Btn variant="icon" className="b-danger" aria-label="Hapus permanen" onClick={() => setConfirmPurge(p)}>
+                          <Icon name="delete_forever" size={20} />
+                        </Btn>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            )
           ) : shown.length === 0 ? (
             <div className="empty">
               <Icon name={posts.length ? "search_off" : "post_add"} size={48} />
@@ -345,11 +427,19 @@ export function AdminApp() {
 
       <Editor open={editorOpen} postId={editingId} onClose={closeEditor} onSaved={onSaved} />
       <PwDialog open={pwOpen} onClose={() => setPwOpen(false)} />
-      <Dialog open={!!confirmDel} onClose={() => setConfirmDel(null)} icon="delete" title="Hapus postingan?"
-        text={`“${confirmDel?.title ?? ""}” beserta foto, suka, dan komentarnya akan dihapus. Kamu punya 6 detik untuk mengurungkan.`}
+
+      <Dialog open={!!confirmDel} onClose={() => setConfirmDel(null)} icon="delete" title="Pindah ke sampah?"
+        text={`“${confirmDel?.title ?? ""}” langsung disembunyikan dari blog. Kamu punya 10 detik untuk mengurungkan, atau kapan saja mengembalikannya dari tab Sampah.`}
         actions={<>
           <Btn variant="text" onClick={() => setConfirmDel(null)}>Batal</Btn>
-          <Btn variant="filled" style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={doDelete}>Hapus</Btn>
+          <Btn variant="filled" style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={() => void doDelete()}>Hapus</Btn>
+        </>} />
+
+      <Dialog open={!!confirmPurge} onClose={() => setConfirmPurge(null)} icon="delete_forever" title="Hapus permanen?"
+        text={`“${confirmPurge?.title ?? ""}” beserta foto, suka, dan komentarnya akan dihapus selamanya. Ini tidak bisa diurungkan.`}
+        actions={<>
+          <Btn variant="text" onClick={() => setConfirmPurge(null)}>Batal</Btn>
+          <Btn variant="filled" style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={() => void doPurge()}>Hapus permanen</Btn>
         </>} />
     </main>
   );
@@ -492,9 +582,6 @@ function Editor({ open, postId, onClose, onSaved }: {
   const [err, setErr] = useState("");
   const [restore, setRestore] = useState<LocalDraft | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  /* Callback disimpan di ref: efek pemuatan TIDAK lagi berjalan ulang saat
-     parent re-render (mis. snackbar muncul) sehingga tulisan tidak ter-reset. */
   const cb = useRef({ onClose, snack });
   cb.current = { onClose, snack };
 
@@ -529,14 +616,13 @@ function Editor({ open, postId, onClose, onSaved }: {
     return () => { alive = false; };
   }, [open, postId]);
 
-  /* Autosave lokal: jaring aman kalau tab tertutup atau terjadi kesalahan. */
   useEffect(() => {
     if (!open || loading || restore) return;
     if (!title.trim() && !body.trim()) return;
     const t = setTimeout(() => {
       try {
         localStorage.setItem(draftKey(postId), JSON.stringify({ title, body, labels, link, publish, ts: Date.now() }));
-      } catch { /* kuota penuh, abaikan */ }
+      } catch { /* kuota penuh */ }
     }, 700);
     return () => clearTimeout(t);
   }, [open, loading, restore, postId, title, body, labels, link, publish]);
