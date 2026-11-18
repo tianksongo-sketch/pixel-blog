@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis";
 import { htmlToText, makeExcerpt, readingMinutes, uid } from "./utils";
+import { BUILD } from "./version";
 
 export type PostStatus = "published" | "draft";
 export type PostCard = {
@@ -19,8 +20,6 @@ const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TO
 export const redis = url && token ? new Redis({ url, token }) : null;
 export const dbReady = !!redis;
 
-/* Penyimpanan hanya memakai GET/SET string JSON — tidak ada pipeline, hash, atau zrange
-   sebagai sumber kebenaran, sehingga tidak ada bentuk hasil yang bisa berbeda diam-diam. */
 const INDEX = "px:index";
 const PKEY = (id: string) => `px:post:${id}`;
 const IKEY = (id: string) => `img:${id}`;
@@ -72,7 +71,7 @@ function normFull(raw: unknown, id: string): PostFull | null {
 const strip = (p: PostFull): PostCard => { const { body, ...c } = p; void body; return c; };
 const byNewest = (a: PostCard, b: PostCard) => b.createdAt - a.createdAt;
 
-/* ---------- mode demo (memori) ---------- */
+/* ---------- mode demo ---------- */
 type Mem = {
   posts: Map<string, PostFull>; imgs: Map<string, string>;
   likes: Map<string, Set<string>>; comments: Map<string, StoredComment[]>;
@@ -119,7 +118,7 @@ function mem(): Mem {
   return g.__pxmem;
 }
 
-/* ---------- indeks: satu GET untuk seluruh daftar ---------- */
+/* ---------- indeks ---------- */
 async function scanKeys(pattern: string): Promise<string[]> {
   if (!redis) return [];
   const out: string[] = [];
@@ -132,7 +131,7 @@ async function scanKeys(pattern: string): Promise<string[]> {
       if (!next || next === "0") break;
       cursor = next;
     }
-  } catch { /* lanjut ke fallback */ }
+  } catch { /* fallback */ }
   if (!out.length) {
     try { ((await redis.keys(pattern)) as unknown[]).forEach((k) => out.push(String(k))); } catch { /* abaikan */ }
   }
@@ -164,17 +163,23 @@ async function writeIndex(cards: PostCard[]): Promise<void> {
   throw new Error("Database menolak menyimpan daftar postingan. Periksa koneksi Upstash di Vercel, lalu Redeploy.");
 }
 
+/** Indeks tidak lagi dipercaya buta: dibandingkan dengan jumlah di zset. */
 async function readIndex(): Promise<PostCard[]> {
   if (!redis) return [...mem().posts.values()].map(strip).sort(byNewest);
-  const cached = json<PostCard[]>(await redis.get(INDEX).catch(() => null));
-  if (Array.isArray(cached) && cached.length) {
-    const cards = cached.map((c) => normCard(c)).filter((c): c is PostCard => !!c);
-    if (cards.length) return cards.sort(byNewest);
-  }
+  const [rawIdx, zCount] = await Promise.all([
+    redis.get(INDEX).catch(() => null),
+    redis.zcard(ZSET).catch(() => 0)
+  ]);
+  const idx = json<PostCard[]>(rawIdx);
+  const cards = (Array.isArray(idx) ? idx : []).map((c) => normCard(c)).filter((c): c is PostCard => !!c);
+  if (cards.length && cards.length >= N(zCount)) return cards.sort(byNewest);
   const all = await collectAll();
-  const cards = all.map(strip).sort(byNewest);
-  if (cards.length) await writeIndex(cards).catch(() => {});
-  return cards;
+  const rebuilt = all.map(strip).sort(byNewest);
+  if (rebuilt.length) {
+    await writeIndex(rebuilt).catch(() => {});
+    return rebuilt;
+  }
+  return cards.sort(byNewest);
 }
 
 export async function repairIndex(): Promise<{ ditemukan: number; tersimpan: number }> {
@@ -182,12 +187,10 @@ export async function repairIndex(): Promise<{ ditemukan: number; tersimpan: num
   const all = await collectAll();
   const cards = all.map(strip).sort(byNewest);
   await writeIndex(cards);
-  try {
-    for (const p of all) {
-      await redis.zadd(ZSET, { score: p.createdAt, member: p.id });
-      await redis.set(PKEY(p.id), JSON.stringify(p));
-    }
-  } catch { /* indeks sudah tersimpan, cukup */ }
+  for (const p of all) {
+    await redis.zadd(ZSET, { score: p.createdAt, member: p.id }).catch(() => {});
+    await redis.set(PKEY(p.id), JSON.stringify(p)).catch(() => {});
+  }
   return { ditemukan: all.length, tersimpan: cards.length };
 }
 
@@ -203,7 +206,8 @@ async function readFull(id: string): Promise<PostFull | null> {
   }
   const idx = json<PostCard[]>(await redis.get(INDEX).catch(() => null));
   const card = Array.isArray(idx) ? idx.find((c) => c?.id === id) : null;
-  return card ? { ...normCard(card, id)!, body: "" } : null;
+  const norm = card ? normCard(card, id) : null;
+  return norm ? { ...norm, body: "" } : null;
 }
 
 export async function listCards(includeDrafts = false): Promise<PostCard[]> {
@@ -236,7 +240,6 @@ export async function getStats(id: string, vid?: string): Promise<{ likes: numbe
   ]);
   return { likes, comments, liked };
 }
-
 export async function getFeed(vid?: string): Promise<PostWithStats[]> {
   const cards = await listCards(false);
   const stats = await Promise.all(cards.map((c) => getStats(c.id, vid)));
@@ -261,7 +264,7 @@ export async function adminList(): Promise<Array<PostCard & { likes: number; com
   })));
 }
 
-/* ---------- tulis: SET string + verifikasi baca-ulang ---------- */
+/* ---------- tulis ---------- */
 function buildPost(input: PostInput, id: string, prev?: PostFull | null): PostFull {
   const body = input.body ?? prev?.body ?? "";
   const text = htmlToText(body);
@@ -302,16 +305,21 @@ export async function createPost(input: PostInput): Promise<PostFull> {
   if (!back || back.title !== post.title) {
     throw new Error("Database tidak menyimpan postingan (uji baca-ulang gagal). Periksa env Upstash di Vercel lalu Redeploy.");
   }
+  await redis.zadd(ZSET, { score: post.createdAt, member: id }).catch(() => {});
   const cards = await readIndex();
   await writeIndex([strip(post), ...cards.filter((c) => c.id !== id)]);
-  await redis.zadd(ZSET, { score: post.createdAt, member: id }).catch(() => {});
   return post;
 }
 
 export async function updatePost(id: string, patch: Partial<PostInput>): Promise<PostFull | null> {
   const prev = await readFull(id);
   if (!prev) return null;
-  const post = buildPost({ ...patch, title: patch.title ?? prev.title, link: patch.link ?? prev.link, body: patch.body ?? prev.body, labels: patch.labels ?? prev.labels, status: patch.status ?? prev.status, author: patch.author ?? prev.author, cover: patch.cover }, id, prev);
+  const post = buildPost({
+    ...patch,
+    title: patch.title ?? prev.title, link: patch.link ?? prev.link, body: patch.body ?? prev.body,
+    labels: patch.labels ?? prev.labels, status: patch.status ?? prev.status,
+    author: patch.author ?? prev.author, cover: patch.cover
+  }, id, prev);
   if (!redis) {
     const m = mem();
     m.posts.set(id, post);
@@ -324,9 +332,9 @@ export async function updatePost(id: string, patch: Partial<PostInput>): Promise
   await redis.set(PKEY(id), JSON.stringify(post));
   const back = normFull(await redis.get(PKEY(id)).catch(() => null), id);
   if (!back || back.ver !== post.ver) throw new Error("Database tidak menyimpan perubahan. Periksa koneksi Upstash.");
+  await redis.zadd(ZSET, { score: post.createdAt, member: id }).catch(() => {});
   const cards = await readIndex();
   await writeIndex([strip(post), ...cards.filter((c) => c.id !== id)]);
-  await redis.zadd(ZSET, { score: post.createdAt, member: id }).catch(() => {});
   return post;
 }
 
@@ -449,6 +457,7 @@ export async function rlReset(key: string): Promise<void> {
 export async function dbInfo(probe = true) {
   const envTerbaca = process.env.UPSTASH_REDIS_REST_URL ? "UPSTASH_REDIS_REST_*" : process.env.KV_REST_API_URL ? "KV_REST_API_*" : "tidak ada";
   const base = {
+    build: BUILD,
     demo: !dbReady,
     envTerbaca,
     urlAda: !!url,
@@ -457,8 +466,9 @@ export async function dbInfo(probe = true) {
       ? "Database tersambung."
       : "MODE DEMO: Upstash belum tersambung. Postingan hanya di memori dan akan hilang. Sambungkan Upstash di Vercel lalu Redeploy."
   };
-  if (!redis) return { ...base, ujiTulis: "dilewati (demo)", indeks: mem().posts.size, zset: 0, ditemukan: mem().posts.size, terbaca: mem().posts.size, perluPerbaiki: false, ids: [...mem().posts.keys()] };
-
+  if (!redis) {
+    return { ...base, ujiTulis: "dilewati (demo)", indeks: mem().posts.size, zset: 0, ditemukan: mem().posts.size, terbaca: mem().posts.size, perluPerbaiki: false, ids: [...mem().posts.keys()] };
+  }
   let ujiTulis = "tidak diuji";
   if (probe) {
     const k = `probe:${uid(6)}`;
@@ -471,8 +481,7 @@ export async function dbInfo(probe = true) {
   }
   const idxRaw = json<PostCard[]>(await redis.get(INDEX).catch(() => null));
   const indeks = Array.isArray(idxRaw) ? idxRaw.length : 0;
-  let zset = 0;
-  try { zset = N(await redis.zcard(ZSET)); } catch { zset = 0; }
+  const zset = N(await redis.zcard(ZSET).catch(() => 0));
   const all = await collectAll();
   const terbaca = (await listCards(true).catch(() => [])).length;
   return {
