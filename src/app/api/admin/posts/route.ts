@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminList, createPost, dbInfo, type Cover, type PostStatus } from "@/lib/db";
+import { adminList, createPost, dbInfo, trashList, type Cover, type PostStatus } from "@/lib/db";
 import { isAuthed } from "@/lib/auth";
 import { bodyIsEmpty, optionalLink, parseLabels, sanitizeBody, sniffMime } from "@/lib/utils";
 
@@ -24,10 +24,10 @@ function parseCover(input: unknown): Cover | null | undefined {
 export async function GET() {
   if (!(await isAuthed())) return NextResponse.json({ error: "Tidak diizinkan" }, { status: 401 });
   try {
-    const [posts, diag] = await Promise.all([adminList(), dbInfo(false)]);
-    return NextResponse.json({ posts, diag });
+    const [posts, trash, diag] = await Promise.all([adminList(), trashList(), dbInfo(false)]);
+    return NextResponse.json({ posts, trash, diag });
   } catch (e) {
-    return NextResponse.json({ error: "Gagal membaca database: " + (e instanceof Error ? e.message : String(e)), posts: [] }, { status: 500 });
+    return NextResponse.json({ error: "Gagal membaca database: " + (e instanceof Error ? e.message : String(e)), posts: [], trash: [] }, { status: 500 });
   }
 }
 
