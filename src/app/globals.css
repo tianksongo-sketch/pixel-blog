@@ -42,7 +42,7 @@ button { font: inherit; color: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: var(--md-primary); background-clip: content-box; }
 
 .container { width: 100%; max-width: 1100px; margin-inline: auto; padding-inline: calc(16px + env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-right, 0px)); }
-.page { padding-top: 12px; padding-bottom: 104px; }
+.page { padding-top: 12px; padding-bottom: 112px; }
 .dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.6; flex: none; }
 .link { color: var(--link); text-decoration: none; overflow-wrap: anywhere; }
 .link:hover, .link:focus-visible { text-decoration: underline; }
@@ -153,11 +153,29 @@ button { font: inherit; color: inherit; }
 }
 .card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 8px 22px rgba(0,0,0,0.16); opacity: 0; transition: opacity 0.3s; }
 .card:hover::after { opacity: 1; }
-.card-media { display: block; margin: 8px; border-radius: 20px; overflow: hidden; aspect-ratio: 4 / 3; position: relative; flex: none; background: linear-gradient(100deg, var(--md-surface-container) 40%, var(--md-surface-container-highest) 50%, var(--md-surface-container) 60%); background-size: 200% 100%; animation: px-shimmer 1.4s linear infinite; }
-.lqip { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(14px); transform: scale(1.18); }
-.card-media img, .article-hero img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: cover; transform: scale(1.08); opacity: 0; transition: opacity 0.4s var(--ease-decel); will-change: transform; }
-.card-media img.loaded, .article-hero img.loaded { opacity: 1; }
-.cover-fallback { position: absolute; inset: 0; display: grid; place-items: center; gap: 6px; align-content: center; color: var(--md-on-primary-container); text-align: center; padding: 12px; }
+.card-media {
+  display: block; margin: 8px; border-radius: 20px; overflow: hidden;
+  aspect-ratio: 4 / 3; position: relative; flex: none;
+  background: linear-gradient(100deg, var(--md-surface-container) 40%, var(--md-surface-container-highest) 50%, var(--md-surface-container) 60%);
+  background-size: 200% 100%; animation: px-shimmer 1.4s linear infinite;
+}
+.card-media.ready, .article-hero.ready { animation: none; background: var(--md-surface-container); }
+
+/* LQIP duduk DI BELAKANG foto. Foto selalu opacity 1, jadi tidak mungkin
+   tertinggal blur walau event load terlewat saat hidrasi. */
+.lqip {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center;
+  filter: blur(16px); transform: scale(1.2);
+  transition: opacity 0.5s var(--ease-decel);
+}
+.lqip.gone { opacity: 0; }
+.card-media img, .article-hero img {
+  position: relative; z-index: 1; display: block;
+  width: 100%; height: 100%; object-fit: cover;
+  transform: scale(1.08); opacity: 1; will-change: transform;
+}
+.cover-fallback { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; gap: 6px; align-content: center; color: var(--md-on-primary-container); text-align: center; padding: 12px; }
 .cover-mesh { position: absolute; inset: 0; background: radial-gradient(60% 60% at 18% 20%, color-mix(in srgb, var(--md-primary) 70%, transparent), transparent 70%), radial-gradient(55% 55% at 82% 26%, color-mix(in srgb, var(--md-tertiary) 62%, transparent), transparent 72%), radial-gradient(70% 70% at 50% 92%, color-mix(in srgb, var(--md-secondary) 60%, transparent), transparent 74%), var(--md-primary-container); }
 .cover-fallback .ms { position: relative; z-index: 1; opacity: 0.9; }
 .cover-word { position: relative; z-index: 1; font-weight: 800; font-size: 15px; letter-spacing: -0.2px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -188,7 +206,12 @@ button { font: inherit; color: inherit; }
 .badge-draft, .badge-pub { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; font-weight: 800; letter-spacing: 0.3px; }
 .badge-draft { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
 .badge-pub { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
-.article-hero { position: relative; margin-top: 22px; border-radius: 28px; overflow: hidden; aspect-ratio: 4 / 3; max-height: 62vh; background: var(--md-surface-container); }
+.article-hero {
+  position: relative; margin-top: 22px; border-radius: 28px; overflow: hidden;
+  aspect-ratio: 4 / 3; max-height: 62vh;
+  background: linear-gradient(100deg, var(--md-surface-container) 40%, var(--md-surface-container-highest) 50%, var(--md-surface-container) 60%);
+  background-size: 200% 100%; animation: px-shimmer 1.4s linear infinite;
+}
 .article-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 18px; font-weight: 700; }
 .article-body { margin-top: 22px; font-size: 16.5px; line-height: 1.78; overflow-wrap: anywhere; }
 .article-body > * + * { margin-top: 16px; }
@@ -207,7 +230,14 @@ button { font: inherit; color: inherit; }
 .article-body pre { background: var(--md-surface-container-high); padding: 16px 18px; border-radius: 18px; overflow-x: auto; }
 .article-body pre code { background: none; padding: 0; }
 .article-body b, .article-body strong { font-weight: 700; }
-.article-empty { margin-top: 22px; padding: 18px 20px; border-radius: 22px; background: var(--md-surface-container-low); color: var(--md-on-surface-variant); font-size: 14.5px; display: flex; gap: 12px; align-items: flex-start; }
+
+.article-empty {
+  margin-top: 24px; padding: 22px 24px; border-radius: 24px;
+  background: var(--md-surface-container-low); border: 1px dashed var(--md-outline-variant);
+  color: var(--md-on-surface-variant); display: flex; align-items: center; gap: 14px;
+}
+.article-empty .ms { color: var(--md-outline); }
+.article-empty p { font-size: 15.5px; font-weight: 600; }
 
 .share-row { margin-top: 30px; padding: 18px 0; border-top: 1px solid var(--md-outline-variant); border-bottom: 1px solid var(--md-outline-variant); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .share-row-label { font-weight: 800; font-size: 14.5px; flex: none; }
@@ -393,11 +423,12 @@ button { font: inherit; color: inherit; }
 .theme-fade .banner, .theme-fade .admin-item, .theme-fade .chip, .theme-fade .input,
 .theme-fade .snackbar, .theme-fade .share-ic, .theme-fade .nf-badge, .theme-fade .share-pill,
 .theme-fade .label-chip, .theme-fade .search-pill, .theme-fade .editor-card, .theme-fade .stat-box,
-.theme-fade .storage-chip, .theme-fade .undo-bar {
+.theme-fade .storage-chip, .theme-fade .undo-bar, .theme-fade .article-empty {
   transition: background-color 0.5s var(--ease-standard), color 0.5s var(--ease-standard), border-color 0.5s var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   body::before { filter: none; }
-}
+  .lqip { filter: blur(16px); }
+            }
