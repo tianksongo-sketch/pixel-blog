@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import type { Comment, PostCard } from "@/lib/db";
 import { compressImage, makeThumb } from "@/lib/img";
 import { commentHtml, formatDate, hostOf } from "@/lib/utils";
+import { BUILD_LABEL } from "@/lib/version";
 import { attachRipple, Avatar, Btn, Dialog, Icon, LabelChip, Sheet, Skel, Switch, SPRING_SOFT } from "./ui";
 import { RichEditor } from "./RichEditor";
 import { useApp } from "./Providers";
@@ -13,6 +14,7 @@ type AdminPost = PostCard & { likes: number; comments: number; commentsList: Com
 type Sess = { demo: boolean; needsSetup: boolean; authed: boolean };
 type Diag = { demo: boolean; envTerbaca: string; indeks: number; zset: number; ditemukan: number; terbaca: number; perluPerbaiki: boolean; pesan: string };
 type CoverDraft = { b64: string; thumb: string; bytes: number };
+type LocalDraft = { title: string; body: string; labels: string[]; link: string; publish: boolean; ts: number };
 
 async function aj(url: string, method = "GET", body?: unknown) {
   try {
@@ -30,6 +32,17 @@ async function aj(url: string, method = "GET", body?: unknown) {
 }
 
 const asAdminPost = (p: PostCard): AdminPost => ({ ...p, likes: 0, comments: 0, commentsList: [] });
+const draftKey = (id: string | null) => `px:draft:${id ?? "new"}`;
+
+function readDraft(id: string | null): LocalDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(id));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as LocalDraft;
+    return d && typeof d.title === "string" ? d : null;
+  } catch { return null; }
+}
+function dropDraft(id: string | null) { try { localStorage.removeItem(draftKey(id)); } catch { /* abaikan */ } }
 
 export function AdminApp() {
   const { snack } = useApp();
@@ -49,6 +62,8 @@ export function AdminApp() {
   const [fresh, setFresh] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ post: AdminPost; index: number } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDel = useRef<string | null>(null);
+  const recent = useRef<Map<string, number>>(new Map());
 
   const load = useCallback(async (quiet = false) => {
     const s = await aj("/api/admin/auth");
@@ -59,22 +74,45 @@ export function AdminApp() {
     const p = await aj("/api/admin/posts");
     if (!quiet) setLoading(false);
     if (p.ok) {
-      setPosts(Array.isArray(p.j.posts) ? p.j.posts : []);
+      const server: AdminPost[] = Array.isArray(p.j.posts) ? p.j.posts : [];
+      const now = Date.now();
+      setPosts((prev) => {
+        const merged = [...server];
+        recent.current.forEach((ts, id) => {
+          if (now - ts > 60000) { recent.current.delete(id); return; }
+          if (!merged.some((x) => x.id === id)) {
+            const local = prev.find((x) => x.id === id);
+            if (local) merged.unshift(local);
+          }
+        });
+        return merged.sort((a, b) => b.createdAt - a.createdAt);
+      });
       if (p.j.diag) setDiag(p.j.diag as Diag);
     } else if (!quiet) snack(p.j.error || "Gagal memuat daftar postingan");
   }, [snack]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
+  /* Kalau halaman ditutup saat undo masih menunggu, penghapusan tetap diselesaikan. */
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    const id = pendingDel.current;
+    if (id) {
+      try {
+        void fetch(`/api/admin/posts/${id}`, { method: "DELETE", keepalive: true });
+      } catch { /* abaikan */ }
+    }
+  }, []);
 
   const upsert = useCallback((post: PostCard | null) => {
     if (!post) return;
+    recent.current.set(post.id, Date.now());
     setPosts((prev) => {
       const old = prev.find((x) => x.id === post.id);
       const merged: AdminPost = old
         ? { ...old, ...post, likes: old.likes, comments: old.comments, commentsList: old.commentsList }
         : asAdminPost(post);
-      return [merged, ...prev.filter((x) => x.id !== post.id)];
+      return [merged, ...prev.filter((x) => x.id !== post.id)].sort((a, b) => b.createdAt - a.createdAt);
     });
     setFresh(post.id);
     setTimeout(() => setFresh((f) => (f === post.id ? null : f)), 2600);
@@ -113,6 +151,8 @@ export function AdminApp() {
   };
 
   const commitDelete = useCallback(async (id: string) => {
+    pendingDel.current = null;
+    recent.current.delete(id);
     const r = await aj(`/api/admin/posts/${id}`, "DELETE");
     if (!r.ok) { snack(r.j.error || "Gagal menghapus"); await load(true); }
   }, [snack, load]);
@@ -124,16 +164,15 @@ export function AdminApp() {
     const index = posts.findIndex((p) => p.id === target.id);
     setPosts((prev) => prev.filter((p) => p.id !== target.id));
     if (undoTimer.current) clearTimeout(undoTimer.current);
+    pendingDel.current = target.id;
     setUndo({ post: target, index: index < 0 ? 0 : index });
-    undoTimer.current = setTimeout(() => {
-      setUndo(null);
-      void commitDelete(target.id);
-    }, 6000);
+    undoTimer.current = setTimeout(() => { setUndo(null); void commitDelete(target.id); }, 6000);
   };
 
   const undoDelete = () => {
     if (!undo) return;
     if (undoTimer.current) clearTimeout(undoTimer.current);
+    pendingDel.current = null;
     const { post, index } = undo;
     setPosts((prev) => {
       const next = prev.filter((p) => p.id !== post.id);
@@ -160,6 +199,11 @@ export function AdminApp() {
     if (r.ok) { upsert(r.j.post); snack(next === "published" ? "Dipublikasikan" : "Disimpan sebagai draf"); void load(true); }
     else { snack(r.j.error || "Gagal mengubah status"); await load(true); }
   };
+
+  const closeEditor = useCallback(() => setEditorOpen(false), []);
+  const openNew = useCallback(() => { setEditingId(null); setEditorOpen(true); }, []);
+  const openEdit = useCallback((id: string) => { setEditingId(id); setEditorOpen(true); }, []);
+  const onSaved = useCallback(async (post: PostCard | null) => { upsert(post); await load(true); }, [upsert, load]);
 
   return (
     <main className="container page">
@@ -262,12 +306,8 @@ export function AdminApp() {
                       <Btn variant="icon" aria-label={p.status === "draft" ? "Publikasikan" : "Jadikan draf"} onClick={() => void toggleStatus(p)}>
                         <Icon name={p.status === "draft" ? "publish" : "unpublished"} size={20} />
                       </Btn>
-                      <Btn variant="icon" aria-label="Edit" onClick={() => { setEditingId(p.id); setEditorOpen(true); }}>
-                        <Icon name="edit" size={20} />
-                      </Btn>
-                      <Btn variant="icon" className="b-danger" aria-label="Hapus" onClick={() => setConfirmDel(p)}>
-                        <Icon name="delete" size={20} />
-                      </Btn>
+                      <Btn variant="icon" aria-label="Edit" onClick={() => openEdit(p.id)}><Icon name="edit" size={20} /></Btn>
+                      <Btn variant="icon" className="b-danger" aria-label="Hapus" onClick={() => setConfirmDel(p)}><Icon name="delete" size={20} /></Btn>
                       <Btn variant="icon" aria-label="Kelola komentar" onClick={() => setExpanded(expanded === p.id ? null : p.id)}>
                         <Icon name={expanded === p.id ? "expand_less" : "expand_more"} size={22} />
                       </Btn>
@@ -295,8 +335,7 @@ export function AdminApp() {
             </div>
           )}
 
-          <motion.button className="fab fab-admin" onPointerDown={attachRipple}
-            onClick={() => { setEditingId(null); setEditorOpen(true); }}
+          <motion.button className="fab fab-admin" onPointerDown={attachRipple} onClick={openNew}
             initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 480, damping: 28, delay: 0.15 }} aria-label="Tulis postingan">
             <Icon name="edit_note" size={24} />Tulis
@@ -304,8 +343,7 @@ export function AdminApp() {
         </>
       )}
 
-      <Editor open={editorOpen} postId={editingId} onClose={() => setEditorOpen(false)}
-        onSaved={async (post) => { upsert(post); await load(true); }} />
+      <Editor open={editorOpen} postId={editingId} onClose={closeEditor} onSaved={onSaved} />
       <PwDialog open={pwOpen} onClose={() => setPwOpen(false)} />
       <Dialog open={!!confirmDel} onClose={() => setConfirmDel(null)} icon="delete" title="Hapus postingan?"
         text={`“${confirmDel?.title ?? ""}” beserta foto, suka, dan komentarnya akan dihapus. Kamu punya 6 detik untuk mengurungkan.`}
@@ -324,6 +362,7 @@ function DemoBanner() {
       <div>
         <strong>Mode demo — Upstash belum tersambung.</strong> Postingan hanya masuk memori sementara dan hilang saat server tidur.
         Sambungkan: Vercel → proyekmu → <strong>Storage</strong> → <strong>Create Database</strong> → <strong>Upstash for Redis</strong> (Free) → <strong>Connect Project</strong> → <strong>Redeploy</strong>.
+        <div style={{ marginTop: 6, opacity: 0.8 }}>Build aktif: {BUILD_LABEL}</div>
       </div>
     </div>
   );
@@ -451,15 +490,26 @@ function Editor({ open, postId, onClose, onSaved }: {
   const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [restore, setRestore] = useState<LocalDraft | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /* Callback disimpan di ref: efek pemuatan TIDAK lagi berjalan ulang saat
+     parent re-render (mis. snackbar muncul) sehingga tulisan tidak ter-reset. */
+  const cb = useRef({ onClose, snack });
+  cb.current = { onClose, snack };
 
   useEffect(() => {
     if (!open) return;
-    setErr(""); setCover(null); setCoverRemoved(false); setLabelDraft(""); setCompressing(false);
+    setErr(""); setCover(null); setCoverRemoved(false); setLabelDraft(""); setCompressing(false); setRestore(null);
     let alive = true;
+    const offerRestore = (updatedAt: number, curTitle: string, curBody: string) => {
+      const d = readDraft(postId);
+      if (d && d.ts > updatedAt && (d.title !== curTitle || d.body !== curBody)) setRestore(d);
+    };
     if (!postId) {
       setTitle(""); setBody(""); setInitialBody(""); setLabels([]); setLink("");
       setPublish(true); setExistingCover(null); setEditorKey(`new-${Date.now()}`);
+      offerRestore(0, "", "");
       return;
     }
     setLoading(true);
@@ -467,16 +517,38 @@ function Editor({ open, postId, onClose, onSaved }: {
       const r = await aj(`/api/admin/posts/${postId}`);
       if (!alive) return;
       setLoading(false);
-      if (!r.ok) { snack(r.j.error || "Gagal memuat postingan"); onClose(); return; }
+      if (!r.ok) { cb.current.snack(r.j.error || "Gagal memuat postingan"); cb.current.onClose(); return; }
       const p = r.j.post;
       setTitle(p.title ?? ""); setBody(p.body ?? ""); setInitialBody(p.body ?? "");
       setLabels(Array.isArray(p.labels) ? p.labels : []); setLink(p.link ?? "");
       setPublish(p.status !== "draft");
       setExistingCover(p.hasCover ? `/api/img/${p.id}?v=${p.ver}` : null);
       setEditorKey(`${p.id}-${Date.now()}`);
+      offerRestore(Number(p.updatedAt) || 0, p.title ?? "", p.body ?? "");
     })();
     return () => { alive = false; };
-  }, [open, postId, snack, onClose]);
+  }, [open, postId]);
+
+  /* Autosave lokal: jaring aman kalau tab tertutup atau terjadi kesalahan. */
+  useEffect(() => {
+    if (!open || loading || restore) return;
+    if (!title.trim() && !body.trim()) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey(postId), JSON.stringify({ title, body, labels, link, publish, ts: Date.now() }));
+      } catch { /* kuota penuh, abaikan */ }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [open, loading, restore, postId, title, body, labels, link, publish]);
+
+  const applyRestore = () => {
+    if (!restore) return;
+    setTitle(restore.title); setBody(restore.body); setInitialBody(restore.body);
+    setLabels(restore.labels ?? []); setLink(restore.link ?? ""); setPublish(restore.publish !== false);
+    setEditorKey(`restore-${Date.now()}`);
+    setRestore(null);
+    cb.current.snack("Draf lokal dipulihkan");
+  };
 
   const addLabel = (raw: string) => {
     const s = raw.replace(/[<>"]/g, "").trim().slice(0, 24);
@@ -520,6 +592,8 @@ function Editor({ open, postId, onClose, onSaved }: {
       : await aj("/api/admin/posts", "POST", payload);
     setBusy(false);
     if (r.ok && r.j.post) {
+      dropDraft(postId);
+      if (!postId) dropDraft(null);
       snack(publish ? "Postingan dipublikasikan" : "Draf tersimpan");
       onClose();
       await onSaved(r.j.post as PostCard);
@@ -538,6 +612,17 @@ function Editor({ open, postId, onClose, onSaved }: {
         </div>
       ) : (
         <>
+          <AnimatePresence>
+            {restore && (
+              <motion.div className="storage-chip" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <Icon name="history" size={18} />
+                <span>Ada tulisan belum disimpan dari sesi sebelumnya.</span>
+                <Btn variant="tonal" onClick={applyRestore}><Icon name="restore" size={16} />Pulihkan</Btn>
+                <Btn variant="text" onClick={() => { dropDraft(postId); setRestore(null); }}>Buang</Btn>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <input className="title-input" value={title} maxLength={120} placeholder="Judul"
             aria-label="Judul postingan" onChange={(e) => { setTitle(e.target.value); setErr(""); }} />
           <div className="field-count" style={{ textAlign: "right", margin: "6px 0 12px" }}>{title.length}/120</div>
