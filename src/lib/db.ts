@@ -6,7 +6,7 @@ export type PostStatus = "published" | "draft";
 export type PostCard = {
   id: string; title: string; link: string; createdAt: number; updatedAt: number; ver: number;
   labels: string[]; status: PostStatus; author: string; excerpt: string; readMin: number;
-  hasCover: boolean; thumb: string;
+  hasCover: boolean; thumb: string; deletedAt: number;
 };
 export type PostFull = PostCard & { body: string };
 export type PostWithStats = PostCard & { likes: number; comments: number; liked: boolean };
@@ -59,7 +59,8 @@ function normCard(raw: unknown, idFallback = ""): PostCard | null {
     excerpt: S(o.excerpt),
     readMin: Math.max(1, N(o.readMin, 1)),
     hasCover: o.hasCover === true || S(o.hasCover) === "1",
-    thumb: S(o.thumb)
+    thumb: S(o.thumb),
+    deletedAt: N(o.deletedAt, 0)
   };
 }
 function normFull(raw: unknown, id: string): PostFull | null {
@@ -101,7 +102,8 @@ function seedDemo(m: Mem) {
     m.posts.set(r.id, {
       id: r.id, title: r.title, link: r.link, body: r.body, createdAt: r.ts, updatedAt: r.ts, ver: 1,
       labels: r.labels, status: r.status, author: "F4KUYY", excerpt: makeExcerpt(text),
-      readMin: readingMinutes(text), hasCover: !!r.cover, thumb: r.cover ? svgThumb(r.cover[0], r.cover[1]) : ""
+      readMin: readingMinutes(text), hasCover: !!r.cover, thumb: r.cover ? svgThumb(r.cover[0], r.cover[1]) : "",
+      deletedAt: 0
     });
     if (r.cover) m.imgs.set(r.id, svgCover(r.cover[0], r.cover[1]));
     m.likes.set(r.id, new Set());
@@ -147,7 +149,7 @@ async function collectAll(): Promise<PostFull[]> {
     const id = k.slice("post:".length);
     if (id && !id.includes(":")) ids.add(id);
   }
-  const list = await Promise.all([...ids].map((id) => readFull(id)));
+  const list = await Promise.all([...ids].map((id) => readStored(id)));
   return list.filter((p): p is PostFull => !!p);
 }
 
@@ -163,7 +165,6 @@ async function writeIndex(cards: PostCard[]): Promise<void> {
   throw new Error("Database menolak menyimpan daftar postingan. Periksa koneksi Upstash di Vercel, lalu Redeploy.");
 }
 
-/** Indeks tidak lagi dipercaya buta: dibandingkan dengan jumlah di zset. */
 async function readIndex(): Promise<PostCard[]> {
   if (!redis) return [...mem().posts.values()].map(strip).sort(byNewest);
   const [rawIdx, zCount] = await Promise.all([
@@ -182,6 +183,14 @@ async function readIndex(): Promise<PostCard[]> {
   return cards.sort(byNewest);
 }
 
+async function putCard(post: PostFull): Promise<void> {
+  if (!redis) { mem().posts.set(post.id, post); return; }
+  await redis.set(PKEY(post.id), JSON.stringify(post));
+  await redis.zadd(ZSET, { score: post.createdAt, member: post.id }).catch(() => {});
+  const cards = await readIndex();
+  await writeIndex([strip(post), ...cards.filter((c) => c.id !== post.id)]);
+}
+
 export async function repairIndex(): Promise<{ ditemukan: number; tersimpan: number }> {
   if (!redis) return { ditemukan: mem().posts.size, tersimpan: mem().posts.size };
   const all = await collectAll();
@@ -195,7 +204,8 @@ export async function repairIndex(): Promise<{ ditemukan: number; tersimpan: num
 }
 
 /* ---------- baca ---------- */
-async function readFull(id: string): Promise<PostFull | null> {
+/** Baca record apa adanya (termasuk yang di sampah). Tidak menebak dari indeks. */
+async function readStored(id: string): Promise<PostFull | null> {
   if (!redis) return mem().posts.get(id) ?? null;
   const modern = normFull(await redis.get(PKEY(id)).catch(() => null), id);
   if (modern) return modern;
@@ -204,17 +214,17 @@ async function readFull(id: string): Promise<PostFull | null> {
     await redis.set(PKEY(id), JSON.stringify(legacy)).catch(() => {});
     return legacy;
   }
-  const idx = json<PostCard[]>(await redis.get(INDEX).catch(() => null));
-  const card = Array.isArray(idx) ? idx.find((c) => c?.id === id) : null;
-  const norm = card ? normCard(card, id) : null;
-  return norm ? { ...norm, body: "" } : null;
+  return null;
 }
 
 export async function listCards(includeDrafts = false): Promise<PostCard[]> {
-  const cards = await readIndex();
+  const cards = (await readIndex()).filter((c) => !c.deletedAt);
   return includeDrafts ? cards : cards.filter((c) => c.status === "published");
 }
-export async function getFull(id: string): Promise<PostFull | null> { return readFull(id); }
+export async function trashCards(): Promise<PostCard[]> {
+  return (await readIndex()).filter((c) => c.deletedAt > 0).sort((a, b) => b.deletedAt - a.deletedAt);
+}
+export async function getFull(id: string): Promise<PostFull | null> { return readStored(id); }
 export const getPost = getFull;
 
 export async function getImg(id: string): Promise<string | null> {
@@ -246,8 +256,8 @@ export async function getFeed(vid?: string): Promise<PostWithStats[]> {
   return cards.map((c, i) => ({ ...c, ...stats[i] }));
 }
 export async function getArticle(id: string, vid?: string) {
-  const post = await readFull(id);
-  if (!post) return null;
+  const post = await readStored(id);
+  if (!post || post.deletedAt) return null;
   const [stats, comments] = await Promise.all([getStats(id, vid), getComments(id)]);
   return { post, stats, comments };
 }
@@ -262,6 +272,10 @@ export async function adminList(): Promise<Array<PostCard & { likes: number; com
   return Promise.all(cards.map(async (c) => ({
     ...c, likes: await likeCount(c.id), comments: await commentCount(c.id), commentsList: await getComments(c.id)
   })));
+}
+export async function trashList(): Promise<Array<PostCard & { likes: number; comments: number }>> {
+  const cards = await trashCards();
+  return Promise.all(cards.map(async (c) => ({ ...c, likes: await likeCount(c.id), comments: await commentCount(c.id) })));
 }
 
 /* ---------- tulis ---------- */
@@ -284,7 +298,8 @@ function buildPost(input: PostInput, id: string, prev?: PostFull | null): PostFu
     excerpt: makeExcerpt(text),
     readMin: readingMinutes(text),
     hasCover,
-    thumb: input.cover === undefined ? prev?.thumb ?? "" : input.cover?.thumb ?? ""
+    thumb: input.cover === undefined ? prev?.thumb ?? "" : input.cover?.thumb ?? "",
+    deletedAt: prev?.deletedAt ?? 0
   };
 }
 
@@ -312,7 +327,7 @@ export async function createPost(input: PostInput): Promise<PostFull> {
 }
 
 export async function updatePost(id: string, patch: Partial<PostInput>): Promise<PostFull | null> {
-  const prev = await readFull(id);
+  const prev = await readStored(id);
   if (!prev) return null;
   const post = buildPost({
     ...patch,
@@ -338,7 +353,29 @@ export async function updatePost(id: string, patch: Partial<PostInput>): Promise
   return post;
 }
 
-export async function deletePost(id: string): Promise<void> {
+/** Hapus = pindah ke Tempat Sampah, LANGSUNG tersimpan di server. */
+export async function deletePost(id: string): Promise<PostFull | null> {
+  const prev = await readStored(id);
+  if (!prev) return null;
+  const next: PostFull = { ...prev, deletedAt: Date.now() };
+  await putCard(next);
+  const back = await readStored(id);
+  if (!back || !back.deletedAt) throw new Error("Database tidak menyimpan penghapusan. Coba lagi.");
+  return next;
+}
+
+export async function restorePost(id: string): Promise<PostFull | null> {
+  const prev = await readStored(id);
+  if (!prev) return null;
+  const next: PostFull = { ...prev, deletedAt: 0 };
+  await putCard(next);
+  const back = await readStored(id);
+  if (!back || back.deletedAt) throw new Error("Database tidak menyimpan pemulihan. Coba lagi.");
+  return next;
+}
+
+/** Hapus permanen: record, foto, suka, komentar. */
+export async function purgePost(id: string): Promise<void> {
   if (!redis) {
     const m = mem();
     m.posts.delete(id); m.imgs.delete(id); m.likes.delete(id); m.comments.delete(id);
@@ -467,7 +504,8 @@ export async function dbInfo(probe = true) {
       : "MODE DEMO: Upstash belum tersambung. Postingan hanya di memori dan akan hilang. Sambungkan Upstash di Vercel lalu Redeploy."
   };
   if (!redis) {
-    return { ...base, ujiTulis: "dilewati (demo)", indeks: mem().posts.size, zset: 0, ditemukan: mem().posts.size, terbaca: mem().posts.size, perluPerbaiki: false, ids: [...mem().posts.keys()] };
+    const all = [...mem().posts.values()];
+    return { ...base, ujiTulis: "dilewati (demo)", indeks: all.length, zset: 0, ditemukan: all.length, terbaca: all.filter((p) => !p.deletedAt).length, sampah: all.filter((p) => p.deletedAt).length, perluPerbaiki: false, ids: all.map((p) => p.id) };
   }
   let ujiTulis = "tidak diuji";
   if (probe) {
@@ -484,10 +522,11 @@ export async function dbInfo(probe = true) {
   const zset = N(await redis.zcard(ZSET).catch(() => 0));
   const all = await collectAll();
   const terbaca = (await listCards(true).catch(() => [])).length;
+  const sampah = all.filter((p) => p.deletedAt).length;
   return {
-    ...base, ujiTulis, indeks, zset, ditemukan: all.length, terbaca,
-    perluPerbaiki: all.length > terbaca,
+    ...base, ujiTulis, indeks, zset, ditemukan: all.length, terbaca, sampah,
+    perluPerbaiki: all.length > indeks,
     ids: all.map((p) => p.id).slice(0, 20),
-    contoh: all[0] ? { id: all[0].id, judul: all[0].title, status: all[0].status, panjangBody: all[0].body.length } : null
+    contoh: all[0] ? { id: all[0].id, judul: all[0].title, status: all[0].status, panjangBody: all[0].body.length, diSampah: !!all[0].deletedAt } : null
   };
 }
