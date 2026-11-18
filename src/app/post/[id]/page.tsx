@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { commentCount, getComments, getPost, isLiked, likeCount } from "@/lib/db";
+import { getArticle, getFull, getNeighbors } from "@/lib/db";
+import { isAuthed } from "@/lib/auth";
 import { siteUrl } from "@/lib/utils";
 import { TopAppBar } from "@/components/TopAppBar";
 import { PostDetail } from "@/components/PostDetail";
@@ -12,38 +13,37 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
-  const p = await getPost(id);
+  const p = await getFull(id);
   if (!p) return { title: "Tidak ditemukan" };
   const base = siteUrl();
   const url = `${base}/post/${id}`;
-  const img = `${base}/api/img/${id}?v=${p.ver}`;
+  const img = p.hasCover ? `${base}/api/img/${id}?v=${p.ver}` : null;
   return {
     title: p.title,
-    description: `${p.title} — baca di Pixel Blog.`,
+    description: p.excerpt || `${p.title} — F4KUYY.`,
     alternates: { canonical: url },
     openGraph: {
-      title: p.title, description: "Pixel Blog", url, type: "article",
-      images: [{ url: img, width: 1200, height: 900 }]
+      title: p.title, description: p.excerpt, url, type: "article",
+      publishedTime: new Date(p.createdAt).toISOString(),
+      authors: [p.author], tags: p.labels,
+      images: img ? [{ url: img, width: 1200, height: 900 }] : undefined
     },
-    twitter: { card: "summary_large_image", title: p.title, images: [img] }
+    twitter: { card: img ? "summary_large_image" : "summary", title: p.title, description: p.excerpt, images: img ? [img] : undefined }
   };
 }
 
 export default async function PostPage({ params }: Params) {
   const { id } = await params;
-  const p = await getPost(id);
-  if (!p) notFound();
-  const vid = (await cookies()).get("px_vid")?.value;
-  const [likes, comments, liked, cms] = await Promise.all([
-    likeCount(id),
-    commentCount(id),
-    vid ? isLiked(id, vid) : Promise.resolve(false),
-    getComments(id)
-  ]);
+  const c = await cookies();
+  const vid = c.get("px_vid")?.value;
+  const data = await getArticle(id, vid);
+  if (!data) notFound();
+  if (data.post.status === "draft" && !(await isAuthed())) notFound();
+  const { newer, older } = await getNeighbors(id);
   return (
     <>
       <TopAppBar title="Postingan" back />
-      <PostDetail post={{ ...p, likes, comments, liked }} comments={cms} />
+      <PostDetail post={data.post} stats={data.stats} comments={data.comments} newer={newer} older={older} />
     </>
   );
 }
