@@ -25,6 +25,7 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
   const barRef = useRef<HTMLDivElement>(null);
   const [showTop, setShowTop] = useState(false);
   const [coverLoaded, setCoverLoaded] = useState(false);
+  const emptyBody = !post.body || !post.body.replace(/<[^>]*>/g, "").trim();
 
   useEffect(() => {
     let raf = 0;
@@ -91,6 +92,7 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
               ref={imgRef} src={`/api/img/${post.id}?v=${post.ver}`} alt={post.title}
               decoding="async" fetchPriority="high"
               className={coverLoaded ? "loaded" : ""} onLoad={() => setCoverLoaded(true)}
+              onError={() => setCoverLoaded(true)}
             />
           </figure>
         )}
@@ -101,7 +103,14 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
           </a>
         )}
 
-        <div className="article-body" dangerouslySetInnerHTML={{ __html: post.body }} />
+        {emptyBody ? (
+          <div className="article-empty">
+            <Icon name="edit_note" size={22} />
+            <span>Postingan ini belum punya isi teks. Buka panel admin, ketuk edit, lalu tulis isinya — sekarang isi ikut tersimpan otomatis.</span>
+          </div>
+        ) : (
+          <div className="article-body" dangerouslySetInnerHTML={{ __html: post.body }} />
+        )}
 
         <ShareRow post={post} />
 
