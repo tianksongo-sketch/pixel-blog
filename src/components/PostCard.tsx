@@ -1,5 +1,5 @@
 "use client";
-import { useState, type CSSProperties } from "react";
+import { useCallback, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
@@ -12,9 +12,18 @@ import { ShareButton } from "./ShareButton";
 
 export function PostCard({ post, index, onLabel }: { post: PostWithStats; index: number; onLabel?: (l: string) => void }) {
   const router = useRouter();
-  const [loaded, setLoaded] = useState(false);
-  const imgRef = useParallax<HTMLImageElement>(7);
+  const parallax = useParallax<HTMLImageElement>(7);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
   const href = `/post/${post.id}`;
+  const showPhoto = post.hasCover && !failed;
+
+  /* Foto yang sudah selesai dimuat sebelum hidrasi tidak memicu onLoad.
+     Callback ref ini memeriksa .complete supaya placeholder blur selalu dilepas. */
+  const attachImg = useCallback((el: HTMLImageElement | null) => {
+    parallax.current = el;
+    if (el && el.complete && el.naturalWidth > 0) setReady(true);
+  }, [parallax]);
 
   return (
     <motion.article
@@ -25,24 +34,28 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
       onPointerEnter={() => warm(router, href)}
     >
       <Link
-        href={href} prefetch className="card-media" aria-label={post.title}
-        onPointerDown={() => warm(router, href)}
+        href={href} prefetch className={`card-media${ready || !showPhoto ? " ready" : ""}`}
+        aria-label={post.title} onPointerDown={() => warm(router, href)}
         style={{ viewTransitionName: `post-img-${post.id}` } as CSSProperties}
       >
-        {post.hasCover ? (
+        {showPhoto ? (
           <>
-            {post.thumb && <span className="lqip" style={{ backgroundImage: `url("${post.thumb}")` }} aria-hidden="true" />}
+            {post.thumb && <span className={`lqip${ready ? " gone" : ""}`} style={{ backgroundImage: `url("${post.thumb}")` }} aria-hidden="true" />}
             <img
-              ref={imgRef} src={`/api/img/${post.id}?v=${post.ver}`} alt={post.title}
-              loading={index < 3 ? "eager" : "lazy"} decoding="async"
-              className={loaded ? "loaded" : ""} onLoad={() => setLoaded(true)}
-              onError={() => setLoaded(true)}
+              ref={attachImg}
+              src={`/api/img/${post.id}?v=${post.ver}`}
+              alt={post.title}
+              loading={index < 3 ? "eager" : "lazy"}
+              decoding="async"
+              fetchPriority={index === 0 ? "high" : "auto"}
+              onLoad={() => setReady(true)}
+              onError={() => { setFailed(true); setReady(true); }}
             />
           </>
         ) : (
           <span className="cover-fallback">
             <span className="cover-mesh" aria-hidden="true" />
-            <Icon name="article" size={30} />
+            <Icon name={failed ? "broken_image" : "article"} size={30} />
             <span className="cover-word">{post.labels[0] ?? post.title.split(" ")[0]}</span>
           </span>
         )}
