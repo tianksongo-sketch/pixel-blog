@@ -52,19 +52,25 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   if (b.author !== undefined) patch.author = String(b.author).trim().slice(0, 40) || "F4KUYY";
   if (b.cover !== undefined) {
     const cover = parseCover(b.cover);
-    if (b.cover !== null && cover === undefined) {
-      return NextResponse.json({ error: "Foto sampul tidak valid (maks ±450 KB)." }, { status: 400 });
-    }
+    if (b.cover !== null && cover === undefined) return NextResponse.json({ error: "Foto sampul tidak valid (maks ±450 KB)." }, { status: 400 });
     patch.cover = cover ?? null;
   }
-  const post = await updatePost(id, patch);
-  if (!post) return NextResponse.json({ error: "Postingan tidak ditemukan" }, { status: 404 });
-  return NextResponse.json({ ok: true, post });
+  try {
+    const post = await updatePost(id, patch);
+    if (!post) return NextResponse.json({ error: "Postingan tidak ditemukan" }, { status: 404 });
+    return NextResponse.json({ ok: true, post });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal menyimpan perubahan." }, { status: 500 });
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   if (!(await isAuthed())) return NextResponse.json({ error: "Tidak diizinkan" }, { status: 401 });
   const { id } = await params;
-  await deletePost(id);
-  return NextResponse.json({ ok: true });
+  try {
+    await deletePost(id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal menghapus." }, { status: 500 });
+  }
 }
