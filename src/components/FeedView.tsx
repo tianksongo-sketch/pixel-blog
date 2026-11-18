@@ -5,9 +5,9 @@ import type { PostWithStats } from "@/lib/db";
 import { attachRipple, Icon, LabelChip } from "./ui";
 import { PostCard } from "./PostCard";
 
-export function FeedView({ posts }: { posts: PostWithStats[] }) {
+export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; initialLabel?: string }) {
   const [q, setQ] = useState("");
-  const [label, setLabel] = useState<string | null>(null);
+  const [label, setLabel] = useState<string | null>(initialLabel ?? null);
   const [sort, setSort] = useState<"new" | "top">("new");
 
   const labels = useMemo(() => {
@@ -18,13 +18,12 @@ export function FeedView({ posts }: { posts: PostWithStats[] }) {
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let out = posts.filter((p) => {
+    const out = posts.filter((p) => {
       if (label && !p.labels.some((l) => l.toLowerCase() === label.toLowerCase())) return false;
       if (!needle) return true;
       return (p.title + " " + p.excerpt + " " + p.labels.join(" ")).toLowerCase().includes(needle);
     });
-    out = [...out].sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
-    return out;
+    return out.sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
   }, [posts, q, label, sort]);
 
   return (
@@ -53,7 +52,7 @@ export function FeedView({ posts }: { posts: PostWithStats[] }) {
         <div className="filter-row">
           <LabelChip label="Semua" active={!label} onClick={() => setLabel(null)} />
           {labels.map((l) => (
-            <LabelChip key={l} label={l} active={label === l} onClick={() => setLabel(label === l ? null : l)} />
+            <LabelChip key={l} label={l} active={label?.toLowerCase() === l.toLowerCase()} onClick={() => setLabel(label?.toLowerCase() === l.toLowerCase() ? null : l)} />
           ))}
         </div>
       )}
