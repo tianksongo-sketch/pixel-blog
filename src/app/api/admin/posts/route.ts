@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminList, createPost, type Cover, type PostStatus } from "@/lib/db";
+import { adminList, createPost, dbInfo, type Cover, type PostStatus } from "@/lib/db";
 import { isAuthed } from "@/lib/auth";
 import { bodyIsEmpty, optionalLink, parseLabels, sanitizeBody, sniffMime } from "@/lib/utils";
 
@@ -23,7 +23,12 @@ function parseCover(input: unknown): Cover | null | undefined {
 
 export async function GET() {
   if (!(await isAuthed())) return NextResponse.json({ error: "Tidak diizinkan" }, { status: 401 });
-  return NextResponse.json({ posts: await adminList() });
+  try {
+    const [posts, diag] = await Promise.all([adminList(), dbInfo(false)]);
+    return NextResponse.json({ posts, diag });
+  } catch (e) {
+    return NextResponse.json({ error: "Gagal membaca database: " + (e instanceof Error ? e.message : String(e)), posts: [] }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -38,11 +43,13 @@ export async function POST(req: NextRequest) {
   if (b.cover !== undefined && b.cover !== null && cover === undefined) {
     return NextResponse.json({ error: "Foto sampul tidak valid (maks ±450 KB)." }, { status: 400 });
   }
-  if (bodyIsEmpty(body) && !cover) {
-    return NextResponse.json({ error: "Tulis isi postingan atau tambahkan foto sampul." }, { status: 400 });
-  }
+  if (bodyIsEmpty(body) && !cover) return NextResponse.json({ error: "Tulis isi postingan atau tambahkan foto sampul." }, { status: 400 });
   const status: PostStatus = b.status === "draft" ? "draft" : "published";
   const author = String(b.author ?? "").trim().slice(0, 40) || "F4KUYY";
-  const post = await createPost({ title, link, body, labels: parseLabels(b.labels), status, author, cover: cover ?? null });
-  return NextResponse.json({ ok: true, post });
+  try {
+    const post = await createPost({ title, link, body, labels: parseLabels(b.labels), status, author, cover: cover ?? null });
+    return NextResponse.json({ ok: true, post });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Gagal menyimpan ke database." }, { status: 500 });
+  }
 }
