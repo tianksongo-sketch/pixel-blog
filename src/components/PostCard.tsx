@@ -17,9 +17,8 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
   const [failed, setFailed] = useState(false);
   const href = `/post/${post.id}`;
   const showPhoto = post.hasCover && !failed;
+  const hero = index === 0;
 
-  /* Foto yang sudah selesai dimuat sebelum hidrasi tidak memicu onLoad.
-     Callback ref ini memeriksa .complete supaya placeholder blur selalu dilepas. */
   const attachImg = useCallback((el: HTMLImageElement | null) => {
     parallax.current = el;
     if (el && el.complete && el.naturalWidth > 0) setReady(true);
@@ -27,10 +26,10 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
 
   return (
     <motion.article
-      className="card"
-      initial={{ opacity: 0, y: 18 }}
+      className={`card${hero ? " hero" : ""}`}
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 420, damping: 32, delay: Math.min(index * 0.04, 0.3) }}
+      transition={{ type: "spring", stiffness: 400, damping: 32, delay: Math.min(index * 0.045, 0.32) }}
       onPointerEnter={() => warm(router, href)}
     >
       <Link
@@ -42,20 +41,16 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
           <>
             {post.thumb && <span className={`lqip${ready ? " gone" : ""}`} style={{ backgroundImage: `url("${post.thumb}")` }} aria-hidden="true" />}
             <img
-              ref={attachImg}
-              src={`/api/img/${post.id}?v=${post.ver}`}
-              alt={post.title}
-              loading={index < 3 ? "eager" : "lazy"}
-              decoding="async"
+              ref={attachImg} src={`/api/img/${post.id}?v=${post.ver}`} alt={post.title}
+              loading={index < 3 ? "eager" : "lazy"} decoding="async"
               fetchPriority={index === 0 ? "high" : "auto"}
-              onLoad={() => setReady(true)}
-              onError={() => { setFailed(true); setReady(true); }}
+              onLoad={() => setReady(true)} onError={() => { setFailed(true); setReady(true); }}
             />
           </>
         ) : (
           <span className="cover-fallback">
             <span className="cover-mesh" aria-hidden="true" />
-            <Icon name={failed ? "broken_image" : "article"} size={30} />
+            <Icon name={failed ? "broken_image" : "article"} size={hero ? 40 : 30} />
             <span className="cover-word">{post.labels[0] ?? post.title.split(" ")[0]}</span>
           </span>
         )}
@@ -88,7 +83,7 @@ export function PostCard({ post, index, onLabel }: { post: PostWithStats; index:
         <div className="card-actions">
           <LikeButton postId={post.id} count={post.likes} liked={post.liked} />
           <Link href={`${href}#comments`} prefetch className="btn b-text act" onPointerDown={attachRipple} aria-label={`${post.comments} komentar`}>
-            <Icon name="chat_bubble" size={21} />
+            <Icon name="chat_bubble" size={22} />
             <RollingNumber value={post.comments} />
           </Link>
           <span className="act-spacer" />
