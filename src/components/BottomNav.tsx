@@ -1,0 +1,42 @@
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { attachRipple, Icon } from "./ui";
+
+export function BottomNav() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [atHome, setAtHome] = useState(true);
+
+  useEffect(() => { setAtHome(pathname === "/"); }, [pathname]);
+
+  const goSearch = () => {
+    if (pathname !== "/") { router.push("/"); setTimeout(() => window.dispatchEvent(new Event("px:focus-search")), 500); }
+    else window.dispatchEvent(new Event("px:focus-search"));
+  };
+  const goTheme = () => window.dispatchEvent(new Event("px:open-theme"));
+
+  return (
+    <nav className="navbar" aria-label="Navigasi utama">
+      <Link href="/" prefetch className={atHome ? "on" : ""} aria-current={atHome ? "page" : undefined}>
+        <span className="nav-ind" onPointerDown={attachRipple}><Icon name="home" size={24} fill={atHome} /></span>
+        <span className="nav-label">Beranda</span>
+      </Link>
+      <button type="button" onClick={goSearch} aria-label="Cari postingan">
+        <span className="nav-ind" onPointerDown={attachRipple}><Icon name="search" size={24} /></span>
+        <span className="nav-label">Cari</span>
+      </button>
+      <button type="button" onClick={goTheme} aria-label="Ubah tema warna">
+        <span className="nav-ind" onPointerDown={attachRipple}><Icon name="palette" size={24} /></span>
+        <span className="nav-label">Tema</span>
+      </button>
+      <Link href="/admin" prefetch className={pathname.startsWith("/admin") ? "on" : ""}>
+        <span className="nav-ind" onPointerDown={attachRipple}>
+          <Icon name="edit_note" size={24} fill={pathname.startsWith("/admin")} />
+        </span>
+        <span className="nav-label">Tulis</span>
+      </Link>
+    </nav>
+  );
+}
