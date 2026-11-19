@@ -6,6 +6,7 @@ import { isSeed, randomSeed, schemeVars, themeCss, type Mode } from "@/lib/theme
 import { Providers } from "@/components/Providers";
 import { Footer } from "@/components/Footer";
 import { BottomNav } from "@/components/BottomNav";
+import { PageShell } from "@/components/PageShell";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Providers initial={{ seed, mode, consent, name, hasVid }}>
-          {children}
+          <PageShell>{children}</PageShell>
           <Footer />
           <BottomNav />
         </Providers>
