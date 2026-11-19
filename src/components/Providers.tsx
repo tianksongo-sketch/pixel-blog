@@ -7,8 +7,11 @@ import { reducedMotion } from "@/lib/utils";
 import { Btn, Dialog, Icon, Sheet } from "./ui";
 import { ThemeFab } from "./ThemeFab";
 
+export type AdminTapTarget = "brand" | "glance";
+
 export type AppState = {
   seed: string; mode: Mode; consent: string | null; name: string | null; hasVid: boolean;
+  adminUi: boolean;
   setTheme: (seed: string, origin?: { x: number; y: number }) => void;
   setMode: (m: Mode) => void;
   snack: (msg: string) => void;
@@ -16,6 +19,8 @@ export type AppState = {
   denyConsent: () => void;
   requireConsent: (run: () => void) => void;
   saveName: (n: string) => Promise<"ok" | "consent" | "error">;
+  registerAdminTap: (target: AdminTapTarget) => void;
+  lockAdminUi: () => void;
 };
 
 const Ctx = createContext<AppState | null>(null);
@@ -32,6 +37,8 @@ async function postJson(url: string, body: unknown): Promise<Response> {
 }
 
 const ERR = /gagal|tidak bisa|menolak|error|salah|terlalu/i;
+const ADMIN_KEY = "px:adminui";
+const GESTURE_WINDOW = 10000;
 
 export function Providers({ initial, children }: { initial: Initial; children: ReactNode }) {
   const router = useRouter();
@@ -40,6 +47,7 @@ export function Providers({ initial, children }: { initial: Initial; children: R
   const [consent, setConsent] = useState<string | null>(initial.consent);
   const [name, setName] = useState<string | null>(initial.name);
   const [hasVid, setHasVid] = useState(initial.hasVid);
+  const [adminUi, setAdminUi] = useState(false);
   const [snackMsg, setSnackMsg] = useState<{ msg: string; id: number } | null>(null);
   const [consentSheet, setConsentSheet] = useState(false);
   const [consentDlg, setConsentDlg] = useState(false);
@@ -48,6 +56,9 @@ export function Providers({ initial, children }: { initial: Initial; children: R
   seedRef.current = seed;
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const adminRef = useRef(adminUi);
+  adminRef.current = adminUi;
+  const tapsRef = useRef<Array<{ t: AdminTapTarget; at: number }>>([]);
 
   const snack = useCallback((msg: string) => setSnackMsg({ msg, id: Date.now() }), []);
 
@@ -56,6 +67,10 @@ export function Providers({ initial, children }: { initial: Initial; children: R
     const t = setTimeout(() => setSnackMsg(null), 3600);
     return () => clearTimeout(t);
   }, [snackMsg]);
+
+  useEffect(() => {
+    try { if (localStorage.getItem(ADMIN_KEY) === "1") setAdminUi(true); } catch { /* abaikan */ }
+  }, []);
 
   useEffect(() => {
     if (initial.consent !== null) return;
@@ -151,10 +166,48 @@ export function Providers({ initial, children }: { initial: Initial; children: R
     }
   }, []);
 
-  /* Memo: konsumen tidak lagi re-render tiap snackbar muncul. */
+  /* Gestur rahasia: F4KUYY 2× lalu “At a glance” 2×, seluruhnya dalam 10 detik. */
+  const registerAdminTap = useCallback((target: AdminTapTarget) => {
+    const now = Date.now();
+    const fresh = tapsRef.current.filter((x) => now - x.at <= GESTURE_WINDOW);
+    fresh.push({ t: target, at: now });
+    tapsRef.current = fresh.slice(-8);
+
+    const last4 = tapsRef.current.slice(-4);
+    const matched =
+      last4.length === 4 &&
+      last4[0].t === "brand" && last4[1].t === "brand" &&
+      last4[2].t === "glance" && last4[3].t === "glance" &&
+      last4[3].at - last4[0].at <= GESTURE_WINDOW;
+
+    if (matched) {
+      tapsRef.current = [];
+      if (adminRef.current) { snack("Mode admin sudah aktif"); return; }
+      setAdminUi(true);
+      try { localStorage.setItem(ADMIN_KEY, "1"); } catch { /* abaikan */ }
+      try { navigator.vibrate?.([12, 40, 18]); } catch { /* abaikan */ }
+      snack("Anda sekarang telah menjadi admin");
+      return;
+    }
+
+    const last2 = tapsRef.current.slice(-2);
+    if (last2.length === 2 && last2.every((x) => x.t === "brand") && !adminRef.current) {
+      snack("Sekarang ketuk “At a glance” 2×");
+    }
+  }, [snack]);
+
+  const lockAdminUi = useCallback(() => {
+    setAdminUi(false);
+    tapsRef.current = [];
+    try { localStorage.removeItem(ADMIN_KEY); } catch { /* abaikan */ }
+    snack("Mode admin dikunci");
+  }, [snack]);
+
   const state = useMemo<AppState>(() => ({
-    seed, mode, consent, name, hasVid, setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName
-  }), [seed, mode, consent, name, hasVid, setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName]);
+    seed, mode, consent, name, hasVid, adminUi,
+    setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName,
+    registerAdminTap, lockAdminUi
+  }), [seed, mode, consent, name, hasVid, adminUi, setTheme, setMode, snack, allowConsent, denyConsent, requireConsent, saveName, registerAdminTap, lockAdminUi]);
 
   const bad = !!snackMsg && ERR.test(snackMsg.msg);
 
