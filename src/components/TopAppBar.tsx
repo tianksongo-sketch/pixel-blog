@@ -1,17 +1,28 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import { randomSeed, type Mode } from "@/lib/theme";
-import { attachRipple, Icon } from "./ui";
+import { attachRipple, Icon, SPRING } from "./ui";
 import { useApp } from "./Providers";
 
 const NEXT_MODE: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
 const MODE_ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
 const MODE_LABEL: Record<Mode, string> = { auto: "Otomatis", light: "Terang", dark: "Gelap" };
 
+const tapReset: CSSProperties = {
+  background: "none", border: 0, padding: 0, margin: 0,
+  font: "inherit", color: "inherit", letterSpacing: "inherit",
+  textAlign: "left", cursor: "pointer", display: "block", width: "100%"
+};
+
 export function TopAppBar({ title, large = false, back = false }: { title: string; large?: boolean; back?: boolean }) {
   const ref = useRef<HTMLElement>(null);
-  const { seed, mode, setMode, setTheme } = useApp();
+  const router = useRouter();
+  const { seed, mode, setMode, setTheme, adminUi, registerAdminTap, lockAdminUi } = useApp();
+  const lpTimer = useRef<number | null>(null);
+  const lpFired = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -25,9 +36,21 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
     return () => { window.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
   }, [large]);
 
+  useEffect(() => () => { if (lpTimer.current) clearTimeout(lpTimer.current); }, []);
+
   const shuffle = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     setTheme(randomSeed(seed), { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  };
+
+  const pencilDown = () => {
+    lpFired.current = false;
+    lpTimer.current = window.setTimeout(() => { lpFired.current = true; lockAdminUi(); }, 650);
+  };
+  const pencilUp = () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } };
+  const pencilClick = () => {
+    if (lpFired.current) { lpFired.current = false; return; }
+    router.push("/admin");
   };
 
   return (
@@ -46,6 +69,25 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           )}
           <span className="appbar-title-sm">{title}</span>
           <div className="appbar-actions">
+            <AnimatePresence>
+              {adminUi && (
+                <motion.button
+                  key="admin-pencil" className="btn b-icon"
+                  style={{ color: "var(--md-primary)" }}
+                  aria-label="Buka panel admin"
+                  title="Buka panel admin · tekan lama untuk mengunci"
+                  initial={{ scale: 0, rotate: -90, opacity: 0, width: 0 }}
+                  animate={{ scale: 1, rotate: 0, opacity: 1, width: 40 }}
+                  exit={{ scale: 0, rotate: 90, opacity: 0, width: 0 }}
+                  transition={SPRING}
+                  onPointerDown={(e) => { attachRipple(e); pencilDown(); }}
+                  onPointerUp={pencilUp} onPointerLeave={pencilUp} onPointerCancel={pencilUp}
+                  onClick={pencilClick}
+                >
+                  <Icon name="edit" size={24} />
+                </motion.button>
+              )}
+            </AnimatePresence>
             <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setMode(NEXT_MODE[mode])}
               aria-label={`Mode tampilan: ${MODE_LABEL[mode]}. Ketuk untuk ganti.`} title={MODE_LABEL[mode]}>
               <Icon name={MODE_ICON[mode]} size={24} />
@@ -58,7 +100,13 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
         </div>
         {large && (
           <div className="appbar-hero container">
-            <h1 className="appbar-title-lg">{title}</h1>
+            <h1 className="appbar-title-lg">
+              <motion.button type="button" style={tapReset} whileTap={{ scale: 0.94 }}
+                transition={{ type: "spring", stiffness: 700, damping: 34 }}
+                onClick={() => registerAdminTap("brand")} aria-label={title}>
+                {title}
+              </motion.button>
+            </h1>
           </div>
         )}
       </header>
@@ -69,6 +117,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
 
 export function Glance() {
   const [now, setNow] = useState<Date | null>(null);
+  const { registerAdminTap } = useApp();
   useEffect(() => { setNow(new Date()); }, []);
   let line = "\u00A0";
   if (now) {
@@ -78,7 +127,13 @@ export function Glance() {
   }
   return (
     <section className="glance">
-      <h2>At a glance</h2>
+      <h2>
+        <motion.button type="button" style={tapReset} whileTap={{ scale: 0.94 }}
+          transition={{ type: "spring", stiffness: 700, damping: 34 }}
+          onClick={() => registerAdminTap("glance")} aria-label="At a glance">
+          At a glance
+        </motion.button>
+      </h2>
       <p suppressHydrationWarning>{line}</p>
     </section>
   );
