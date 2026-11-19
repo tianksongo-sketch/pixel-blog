@@ -10,6 +10,7 @@ import { attachRipple, Avatar, Icon, LabelChip, RollingNumber, useParallax } fro
 import { LikeButton } from "./LikeButton";
 import { ShareRow } from "./ShareButton";
 import { Comments } from "./Comments";
+import { Toc } from "./Toc";
 
 type Props = {
   post: PostFull;
@@ -17,15 +18,23 @@ type Props = {
   comments: Comment[];
   newer: PostCard | null;
   older: PostCard | null;
+  views: number;
 };
 
-export function PostDetail({ post, stats, comments, newer, older }: Props) {
+const ANCHOR_CSS = `
+#comments{scroll-margin-top:calc(104px + var(--safe-t));}
+.article-body h2,.article-body h3,.article-body h4{scroll-margin-top:calc(104px + var(--safe-t));}
+`;
+
+export function PostDetail({ post, stats, comments, newer, older, views }: Props) {
   const router = useRouter();
   const parallax = useParallax<HTMLImageElement>(10);
   const barRef = useRef<HTMLDivElement>(null);
+  const counted = useRef(false);
   const [showTop, setShowTop] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [reads, setReads] = useState(views);
   const emptyBody = !post.body || !post.body.replace(/<[^>]*>/g, "").trim();
   const showPhoto = post.hasCover && !failed;
 
@@ -33,6 +42,21 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
     parallax.current = el;
     if (el && el.complete && el.naturalWidth > 0) setReady(true);
   }, [parallax]);
+
+  useEffect(() => {
+    if (counted.current) return;
+    counted.current = true;
+    const t = setTimeout(() => {
+      void fetch("/api/view", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: post.id })
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (j && typeof j.views === "number") setReads(j.views); })
+        .catch(() => {});
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [post.id]);
 
   useEffect(() => {
     let raf = 0;
@@ -62,6 +86,7 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
 
   return (
     <>
+      <style dangerouslySetInnerHTML={{ __html: ANCHOR_CSS }} />
       <div className="read-progress" aria-hidden="true"><div ref={barRef} /></div>
       <motion.main
         className="container page article"
@@ -89,24 +114,27 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
           <span suppressHydrationWarning>{formatDate(post.createdAt)}</span>
           <span className="dot" />
           <span>{post.readMin} mnt baca</span>
+          {reads > 0 && (
+            <>
+              <span className="dot" />
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Icon name="visibility" size={16} />
+                <RollingNumber value={reads} /> pembaca
+              </span>
+            </>
+          )}
           {post.status === "draft" && <span className="badge-draft"><Icon name="draft" size={14} />Draf</span>}
         </div>
 
         {post.hasCover && (
-          <figure
-            className={`article-hero${ready ? " ready" : ""}`}
-            style={{ viewTransitionName: `post-img-${post.id}` } as CSSProperties}
-          >
+          <figure className={`article-hero${ready ? " ready" : ""}`} style={{ viewTransitionName: `post-img-${post.id}` } as CSSProperties}>
             {showPhoto ? (
               <>
                 {post.thumb && <span className={`lqip${ready ? " gone" : ""}`} style={{ backgroundImage: `url("${post.thumb}")` }} aria-hidden="true" />}
                 <img
-                  ref={attachImg}
-                  src={`/api/img/${post.id}?v=${post.ver}`}
-                  alt={post.title}
+                  ref={attachImg} src={`/api/img/${post.id}?v=${post.ver}`} alt={post.title}
                   decoding="async" fetchPriority="high"
-                  onLoad={() => setReady(true)}
-                  onError={() => { setFailed(true); setReady(true); }}
+                  onLoad={() => setReady(true)} onError={() => { setFailed(true); setReady(true); }}
                 />
               </>
             ) : (
@@ -131,7 +159,10 @@ export function PostDetail({ post, stats, comments, newer, older }: Props) {
             <p>Artikel ini tidak memiliki isi.</p>
           </div>
         ) : (
-          <div className="article-body" dangerouslySetInnerHTML={{ __html: post.body }} />
+          <>
+            <Toc postId={post.id} />
+            <div className="article-body" dangerouslySetInnerHTML={{ __html: post.body }} />
+          </>
         )}
 
         <ShareRow post={post} />
