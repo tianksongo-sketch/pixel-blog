@@ -3,11 +3,49 @@ import { motion, AnimatePresence, useDragControls } from "motion/react";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode, type PointerEvent as RPointerEvent, type ButtonHTMLAttributes } from "react";
 import { clamp, reducedMotion } from "@/lib/utils";
+import { overlayEnter, overlayLeave, suppressNextPop } from "@/lib/overlay";
 
-/* Pegas lebih lembut dengan overshoot terasa — tidak patah di tengah jalan. */
 export const SPRING = { type: "spring" as const, stiffness: 300, damping: 24, mass: 1 };
 export const SPRING_SOFT = { type: "spring" as const, stiffness: 240, damping: 30, mass: 1.1 };
 export const SPRING_SNAPPY = { type: "spring" as const, stiffness: 620, damping: 34, mass: 0.8 };
+
+/* Back di HP menutup overlay dulu, bukan pindah halaman. */
+function useOverlayHistory(open: boolean, onClose: () => void) {
+  const pushed = useRef(false);
+  const openedAt = useRef("");
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    openedAt.current = window.location.pathname + window.location.search;
+    overlayEnter();
+    try {
+      window.history.pushState({ ...(window.history.state || {}), pxOverlay: 1 }, "");
+      pushed.current = true;
+    } catch { /* abaikan */ }
+
+    const onPop = () => {
+      if (!pushed.current) return;
+      pushed.current = false;
+      closeRef.current();
+    };
+    window.addEventListener("popstate", onPop);
+
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      overlayLeave();
+      if (pushed.current) {
+        pushed.current = false;
+        const sameUrl = openedAt.current === window.location.pathname + window.location.search;
+        if (sameUrl) {
+          suppressNextPop();
+          try { window.history.back(); } catch { /* abaikan */ }
+        }
+      }
+    };
+  }, [open]);
+}
 
 export function Icon({ name, fill = false, size = 24, className = "", weight = 400 }: {
   name: string; fill?: boolean; size?: number; className?: string; weight?: number;
@@ -47,6 +85,8 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
   open: boolean; onClose: () => void; title: string; icon?: string; text?: string; children?: ReactNode; actions: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useOverlayHistory(open, onClose);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -54,6 +94,7 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
     const t = setTimeout(() => ref.current?.focus(), 80);
     return () => { document.removeEventListener("keydown", onKey); clearTimeout(t); };
   }, [open, onClose]);
+
   if (typeof document === "undefined") return null;
   return createPortal(
     <AnimatePresence>
@@ -84,12 +125,15 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
 
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const controls = useDragControls();
+  useOverlayHistory(open, onClose);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
   if (typeof document === "undefined") return null;
   return createPortal(
     <AnimatePresence>
