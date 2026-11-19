@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import type { PostWithStats } from "@/lib/db";
 import { attachRipple, Icon, LabelChip } from "./ui";
@@ -9,6 +9,16 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
   const [q, setQ] = useState("");
   const [label, setLabel] = useState<string | null>(initialLabel ?? null);
   const [sort, setSort] = useState<"new" | "top">("new");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const focus = () => {
+      searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => searchRef.current?.focus(), 320);
+    };
+    window.addEventListener("px:focus-search", focus);
+    return () => window.removeEventListener("px:focus-search", focus);
+  }, []);
 
   const labels = useMemo(() => {
     const count = new Map<string, number>();
@@ -26,24 +36,26 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
     return [...out].sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
   }, [posts, q, label, sort]);
 
+  const filtered = !!q.trim() || !!label;
+
   return (
     <>
       <div className="feed-tools">
         <div className="search-pill">
-          <Icon name="search" size={20} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari postingan…" aria-label="Cari postingan" />
+          <Icon name="search" size={22} />
+          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari postingan…" aria-label="Cari postingan" />
           {q && (
             <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setQ("")} aria-label="Bersihkan pencarian">
-              <Icon name="close" size={18} />
+              <Icon name="close" size={20} />
             </button>
           )}
         </div>
-        <div className="sort-toggle">
-          <button className={sort === "new" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("new")}>
-            <Icon name="schedule" size={16} />Terbaru
+        <div className="sort-toggle" role="group" aria-label="Urutkan">
+          <button className={sort === "new" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("new")} aria-pressed={sort === "new"}>
+            <Icon name={sort === "new" ? "check" : "schedule"} size={18} weight={600} />Terbaru
           </button>
-          <button className={sort === "top" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("top")}>
-            <Icon name="favorite" size={16} />Terpopuler
+          <button className={sort === "top" ? "on" : ""} onPointerDown={attachRipple} onClick={() => setSort("top")} aria-pressed={sort === "top"}>
+            <Icon name={sort === "top" ? "check" : "favorite"} size={18} weight={600} />Terpopuler
           </button>
         </div>
       </div>
@@ -52,29 +64,35 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
         <div className="filter-row">
           <LabelChip label="Semua" active={!label} onClick={() => setLabel(null)} />
           {labels.map((l) => (
-            <LabelChip key={l} label={l} active={label?.toLowerCase() === l.toLowerCase()} onClick={() => setLabel(label?.toLowerCase() === l.toLowerCase() ? null : l)} />
+            <LabelChip key={l} label={l} active={label?.toLowerCase() === l.toLowerCase()}
+              onClick={() => setLabel(label?.toLowerCase() === l.toLowerCase() ? null : l)} />
           ))}
         </div>
       )}
 
+      <div className="section-head">
+        <h2>{filtered ? "Hasil" : sort === "top" ? "Paling disukai" : "Tulisan terbaru"}</h2>
+        <span className="count">{shown.length}</span>
+      </div>
+
       {shown.length === 0 ? (
         <div className="empty">
-          <Icon name={posts.length ? "search_off" : "photo_library"} size={56} />
-          <p style={{ marginTop: 12 }}>
+          <Icon name={posts.length ? "search_off" : "edit_note"} size={56} />
+          <p style={{ marginTop: 14 }}>
             {posts.length ? "Tidak ada yang cocok. Coba kata lain atau hapus filter." : "Belum ada postingan. Buka panel admin untuk mulai menulis."}
           </p>
-          {posts.length > 0 && (q || label) && (
-            <button className="btn b-tonal" style={{ marginTop: 14 }} onPointerDown={attachRipple}
+          {posts.length > 0 && filtered && (
+            <button className="btn b-tonal" style={{ marginTop: 18 }} onPointerDown={attachRipple}
               onClick={() => { setQ(""); setLabel(null); }}>
               <Icon name="filter_alt_off" size={18} />Hapus filter
             </button>
           )}
         </div>
       ) : (
-        /* Tanpa AnimatePresence/popLayout: kartu selalu tampil pada render pertama. */
         <motion.div className="feed-grid" layout>
           {shown.map((p, i) => (
-            <motion.div key={p.id} layout initial={{ opacity: 1 }} animate={{ opacity: 1 }} style={{ minWidth: 0 }}>
+            <motion.div key={p.id} className={`cell${i === 0 ? " cell-hero" : ""}`} layout
+              initial={{ opacity: 1 }} animate={{ opacity: 1 }}>
               <PostCard post={p} index={i} onLabel={(l) => setLabel(l)} />
             </motion.div>
           ))}
