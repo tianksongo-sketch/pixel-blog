@@ -12,10 +12,15 @@ export function BottomNav() {
   useEffect(() => { setAtHome(pathname === "/"); }, [pathname]);
 
   const goSearch = () => {
-    if (pathname !== "/") { router.push("/"); setTimeout(() => window.dispatchEvent(new Event("px:focus-search")), 500); }
-    else window.dispatchEvent(new Event("px:focus-search"));
+    if (pathname !== "/") {
+      router.push("/");
+      setTimeout(() => window.dispatchEvent(new Event("px:focus-search")), 520);
+    } else {
+      window.dispatchEvent(new Event("px:focus-search"));
+    }
   };
   const goTheme = () => window.dispatchEvent(new Event("px:open-theme"));
+  const onAbout = pathname.startsWith("/about");
 
   return (
     <nav className="navbar" aria-label="Navigasi utama">
@@ -31,11 +36,9 @@ export function BottomNav() {
         <span className="nav-ind" onPointerDown={attachRipple}><Icon name="palette" size={24} /></span>
         <span className="nav-label">Tema</span>
       </button>
-      <Link href="/admin" prefetch className={pathname.startsWith("/admin") ? "on" : ""}>
-        <span className="nav-ind" onPointerDown={attachRipple}>
-          <Icon name="edit_note" size={24} fill={pathname.startsWith("/admin")} />
-        </span>
-        <span className="nav-label">Tulis</span>
+      <Link href="/about" prefetch className={onAbout ? "on" : ""} aria-current={onAbout ? "page" : undefined}>
+        <span className="nav-ind" onPointerDown={attachRipple}><Icon name="info" size={24} fill={onAbout} /></span>
+        <span className="nav-label">About blog</span>
       </Link>
     </nav>
   );
