@@ -1,17 +1,21 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import type { Comment } from "@/lib/db";
 import { commentHtml, timeAgo } from "@/lib/utils";
 import { attachRipple, Avatar, Btn, Dialog, Icon } from "./ui";
 import { useApp } from "./Providers";
 
-export function Comments({ postId, initial }: { postId: string; initial: Comment[] }) {
-  const { name, saveName, requireConsent, snack } = useApp();
-  const [list, setList] = useState<Comment[]>(initial);
+type UiComment = { id: string; name: string; text: string; ts: number; mine?: boolean };
+
+export function Comments({ postId, initial }: { postId: string; initial: UiComment[] }) {
+  const { name, saveName, requireConsent, snack, adminUi } = useApp();
+  const [list, setList] = useState<UiComment[]>(initial);
+  const [canModerate, setCanModerate] = useState(false);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [nameOpen, setNameOpen] = useState(false);
+  const [delTarget, setDelTarget] = useState<UiComment | null>(null);
   const pendingRef = useRef("");
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -21,10 +25,12 @@ export function Comments({ postId, initial }: { postId: string; initial: Comment
       if (!r.ok) return;
       const j = await r.json();
       if (Array.isArray(j.comments)) setList(j.comments);
+      setCanModerate(!!j.canModerate);
     } catch { /* offline, biarkan */ }
   }, [postId]);
 
-  /* Auto-refresh 20 detik hanya saat tab aktif */
+  useEffect(() => { void refresh(); }, [refresh]);
+
   useEffect(() => {
     const tick = () => { if (document.visibilityState === "visible") void refresh(); };
     const id = setInterval(tick, 20000);
@@ -49,6 +55,7 @@ export function Comments({ postId, initial }: { postId: string; initial: Comment
       if (r.ok) {
         setText("");
         if (taRef.current) taRef.current.style.height = "auto";
+        if (j.comment) setList((prev) => [...prev, j.comment as UiComment]);
         await refresh();
         return;
       }
@@ -94,6 +101,31 @@ export function Comments({ postId, initial }: { postId: string; initial: Comment
     } else snack("Gagal menyimpan nama, coba lagi");
   };
 
+  const doDelete = async () => {
+    const c = delTarget;
+    if (!c) return;
+    setDelTarget(null);
+    const before = list;
+    setList((prev) => prev.filter((x) => x.id !== c.id));
+    try {
+      const r = await fetch("/api/comments", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post: postId, cid: c.id })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) {
+        snack(j.forced ? "Komentar dihapus paksa" : "Komentarmu dihapus");
+        void refresh();
+      } else {
+        setList(before);
+        snack(j.error || "Gagal menghapus komentar");
+      }
+    } catch {
+      setList(before);
+      snack("Gagal terhubung, coba lagi");
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   };
@@ -105,22 +137,33 @@ export function Comments({ postId, initial }: { postId: string; initial: Comment
   };
 
   const shown = [...list].reverse();
+  const forced = !!delTarget && !delTarget.mine;
 
   return (
     <section className="cm-section" id="comments">
       <div className="cm-head">
         <h2>Komentar ({list.length})</h2>
+        {adminUi && !canModerate && (
+          <Link href="/admin" className="chip" onPointerDown={attachRipple}>
+            <Icon name="gavel" size={16} />Masuk untuk moderasi
+          </Link>
+        )}
+        {canModerate && (
+          <span className="badge-draft" title="Kamu bisa menghapus komentar siapa pun di halaman ini">
+            <Icon name="gavel" size={13} />Mode moderasi
+          </span>
+        )}
         {name && (
           <button
             className="chip" onPointerDown={attachRipple}
             onClick={() => { pendingRef.current = ""; setNameOpen(true); }}
             aria-label={`Ganti nama, saat ini ${name}`}
           >
-            <Icon name="person" size={16} />
-            Ganti nama
+            <Icon name="person" size={16} />Ganti nama
           </button>
         )}
       </div>
+
       <div>
         <div className="cm-input">
           <textarea
@@ -138,29 +181,79 @@ export function Comments({ postId, initial }: { postId: string; initial: Comment
         </div>
         <div className="cm-count">{text.length}/500 · Enter kirim, Shift+Enter baris baru</div>
       </div>
+
       {shown.length === 0 && <p className="cm-empty">Belum ada komentar. Jadi yang pertama, dong.</p>}
+
       <AnimatePresence initial={false}>
-        {shown.map((c) => (
-          <motion.div
-            key={c.id} className="cm-item" layout
-            initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }} transition={{ type: "spring", stiffness: 480, damping: 34 }}
-          >
-            <Avatar name={c.name} size={40} />
-            <div className="cm-bubble">
-              <div className="cm-meta">
-                <span className="cm-name">{c.name}</span>
-                <span className="cm-time" suppressHydrationWarning>{timeAgo(c.ts)}</span>
+        {shown.map((c) => {
+          const canDelete = !!c.mine || canModerate;
+          return (
+            <motion.div
+              key={c.id} className="cm-item" layout
+              initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.2, ease: [0.3, 0, 0.8, 0.15] } }}
+              transition={{ type: "spring", stiffness: 420, damping: 32 }}
+            >
+              <Avatar name={c.name} size={40} />
+              <div className="cm-bubble">
+                <div className="cm-meta">
+                  <span className="cm-name">{c.name}</span>
+                  {c.mine && (
+                    <span style={{
+                      fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px",
+                      padding: "2px 8px", borderRadius: 999,
+                      background: "var(--md-secondary-container)", color: "var(--md-on-secondary-container)"
+                    }}>KAMU</span>
+                  )}
+                  <span className="cm-time" suppressHydrationWarning>{timeAgo(c.ts)}</span>
+                  <span style={{ flex: 1 }} />
+                  {canDelete && (
+                    <button
+                      className={`btn b-icon${c.mine ? "" : " b-danger"}`}
+                      style={{ width: 32, height: 32, minHeight: 32 }}
+                      onPointerDown={attachRipple}
+                      onClick={() => setDelTarget(c)}
+                      aria-label={c.mine ? "Hapus komentarmu" : `Hapus paksa komentar ${c.name}`}
+                      title={c.mine ? "Hapus komentarmu" : "Hapus paksa (admin)"}
+                    >
+                      <Icon name={c.mine ? "delete" : "gavel"} size={18} />
+                    </button>
+                  )}
+                </div>
+                <p className="cm-text" dangerouslySetInnerHTML={{ __html: commentHtml(c.text) }} />
               </div>
-              <p className="cm-text" dangerouslySetInnerHTML={{ __html: commentHtml(c.text) }} />
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </AnimatePresence>
+
       <NameDialog
         open={nameOpen} current={name}
         onClose={() => { setNameOpen(false); pendingRef.current = ""; }}
         onSave={onNameSave}
+      />
+
+      <Dialog
+        open={!!delTarget}
+        onClose={() => setDelTarget(null)}
+        icon={forced ? "gavel" : "delete"}
+        title={forced ? "Hapus komentar orang ini?" : "Hapus komentarmu?"}
+        text={
+          forced
+            ? `Komentar dari ${delTarget?.name ?? ""} akan dihapus permanen. Kamu bertindak sebagai admin.`
+            : "Komentar ini akan hilang permanen dari tulisan ini."
+        }
+        actions={<>
+          <Btn variant="text" onClick={() => setDelTarget(null)}>Batal</Btn>
+          <Btn
+            variant="filled"
+            style={{ background: "var(--md-error)", color: "var(--md-on-error)" }}
+            onClick={() => void doDelete()}
+          >
+            <Icon name={forced ? "gavel" : "delete"} size={18} />
+            {forced ? "Hapus paksa" : "Hapus"}
+          </Btn>
+        </>}
       />
     </section>
   );
