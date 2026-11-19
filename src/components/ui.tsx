@@ -4,10 +4,10 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode, type PointerEvent as RPointerEvent, type ButtonHTMLAttributes } from "react";
 import { clamp, reducedMotion } from "@/lib/utils";
 
-/* Motion physics system: spring untuk komponen, easing untuk transisi. */
-export const SPRING = { type: "spring" as const, stiffness: 500, damping: 32, mass: 1 };
-export const SPRING_SOFT = { type: "spring" as const, stiffness: 380, damping: 34, mass: 1 };
-export const SPRING_SNAPPY = { type: "spring" as const, stiffness: 700, damping: 38, mass: .8 };
+/* Pegas lebih lembut dengan overshoot terasa — tidak patah di tengah jalan. */
+export const SPRING = { type: "spring" as const, stiffness: 300, damping: 24, mass: 1 };
+export const SPRING_SOFT = { type: "spring" as const, stiffness: 240, damping: 30, mass: 1.1 };
+export const SPRING_SNAPPY = { type: "spring" as const, stiffness: 620, damping: 34, mass: 0.8 };
 
 export function Icon({ name, fill = false, size = 24, className = "", weight = 400 }: {
   name: string; fill?: boolean; size?: number; className?: string; weight?: number;
@@ -51,7 +51,7 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
-    const t = setTimeout(() => ref.current?.focus(), 60);
+    const t = setTimeout(() => ref.current?.focus(), 80);
     return () => { document.removeEventListener("keydown", onKey); clearTimeout(t); };
   }, [open, onClose]);
   if (typeof document === "undefined") return null;
@@ -59,11 +59,15 @@ export function Dialog({ open, onClose, title, icon, text, children, actions }: 
     <AnimatePresence>
       {open && (
         <>
-          <motion.div className="scrim" style={{ zIndex: 69 }} initial={{ opacity: 0 }} animate={{ opacity: 0.32 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onClick={onClose} />
+          <motion.div className="scrim" style={{ zIndex: 69 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 0.32 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.32, ease: [0.05, 0.7, 0.1, 1] }} onClick={onClose} />
           <div className="dialog-wrap">
             <motion.div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="dialog"
-              initial={{ opacity: 0, scale: 0.86, y: 24 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 12 }} transition={SPRING}>
+              initial={{ opacity: 0, scale: 0.82, y: 34 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 18, transition: { duration: 0.2, ease: [0.3, 0, 0.8, 0.15] } }}
+              transition={SPRING}>
               {icon && <div className="dialog-icon"><Icon name={icon} size={28} /></div>}
               <h2 className="dialog-title">{title}</h2>
               {text && <p className="dialog-text">{text}</p>}
@@ -91,12 +95,16 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     <AnimatePresence>
       {open && (
         <>
-          <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 0.32 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} onClick={onClose} />
+          <motion.div className="scrim"
+            initial={{ opacity: 0 }} animate={{ opacity: 0.32 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.34, ease: [0.05, 0.7, 0.1, 1] }} onClick={onClose} />
           <motion.div className="sheet" role="dialog" aria-modal="true" aria-label={title}
             drag="y" dragListener={false} dragControls={controls}
-            dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.5 }} dragMomentum={false}
+            dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.55 }} dragMomentum={false}
             onDragEnd={(_, info) => { if (info.offset.y > 110 || info.velocity.y > 600) onClose(); }}
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={SPRING_SOFT}>
+            initial={{ y: "100%" }} animate={{ y: 0 }}
+            exit={{ y: "100%", transition: { duration: 0.26, ease: [0.3, 0, 0.8, 0.15] } }}
+            transition={SPRING_SOFT}>
             <div className="sheet-handle" onPointerDown={(e) => controls.start(e)}><span /></div>
             <div className="sheet-title">{title}</div>
             <div className="sheet-body">{children}</div>
@@ -125,7 +133,6 @@ export function RollingNumber({ value }: { value: number }) {
   );
 }
 
-/* Avatar memakai bentuk scallop dari Material Shape Library. */
 export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   const initial = (name.trim()[0] || "?").toUpperCase();
   const n = 12, cx = 24, cy = 24, ro = 19.5, ri = 17;
@@ -192,7 +199,7 @@ export function useParallax<T extends HTMLElement>(strength = 10) {
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
       const p = clamp((r.top + r.height / 2 - vh / 2) / vh, -1, 1);
-      el.style.transform = `translateY(${(p * strength).toFixed(1)}px) scale(1.08)`;
+      el.style.transform = `translate3d(0, ${(p * strength).toFixed(1)}px, 0) scale(1.08)`;
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
