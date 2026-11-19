@@ -2,81 +2,145 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { reducedMotion } from "@/lib/utils";
+import { anyOverlay, popSuppressed } from "@/lib/overlay";
 
-/* Transisi halaman: jendela lama mengecil & memudar, jendela baru masuk
-   membesar dengan overshoot. Hanya transform + opacity supaya tetap di compositor. */
-const EXIT_TRANSFORM: Keyframe[] = [
-  { transform: "scale(1) translateY(0)" },
-  { transform: "scale(0.93) translateY(-14px)" }
-];
-const ENTER_TRANSFORM: Keyframe[] = [
-  { transform: "scale(1.09) translateY(30px)" },
-  { transform: "scale(1) translateY(0)" }
-];
-const OVERSHOOT = "cubic-bezier(0.18, 1.28, 0.32, 1)";
-const DECEL = "cubic-bezier(0.05, 0.7, 0.1, 1)";
-const ACCEL = "cubic-bezier(0.3, 0, 0.8, 0.15)";
+const OUT_MS = 190;
+const IN_MS = 720;
+const WATCHDOG_MS = 1100;
+
+const SHELL_CSS = `
+.px-shell{transform-origin:50% 42%;backface-visibility:hidden;}
+@keyframes px-shell-in{
+  0%{opacity:0;transform:scale(1.085) translate3d(0,30px,0);}
+  58%{opacity:1;}
+  100%{opacity:1;transform:scale(1) translate3d(0,0,0);}
+}
+@keyframes px-shell-out{
+  0%{opacity:1;transform:scale(1) translate3d(0,0,0);}
+  100%{opacity:0;transform:scale(.94) translate3d(0,-14px,0);}
+}
+.px-shell.px-enter{animation:px-shell-in ${IN_MS}ms cubic-bezier(.18,1.24,.32,1) both;}
+.px-shell.px-leave{animation:px-shell-out ${OUT_MS}ms cubic-bezier(.3,0,.8,.15) both;}
+@media (prefers-reduced-motion: reduce){
+  .px-shell.px-enter,.px-shell.px-leave{animation:none !important;}
+}
+`;
 
 export function PageShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const ref = useRef<HTMLDivElement>(null);
-  const busy = useRef(false);
-  const safety = useRef<number | null>(null);
-  const running = useRef<Animation[]>([]);
+  const gen = useRef(0);
+  const leaving = useRef(false);
+  const based = useRef(false);
 
-  const stopAll = () => {
-    running.current.forEach((a) => { try { a.cancel(); } catch { /* abaikan */ } });
-    running.current = [];
-    if (safety.current) { clearTimeout(safety.current); safety.current = null; }
-    const el = ref.current;
-    if (el) { el.style.willChange = ""; el.style.opacity = ""; el.style.transform = ""; }
-  };
-
-  useEffect(() => {
+  /* Satu-satunya jalan untuk membuat halaman terlihat kembali. Idempoten. */
+  const reveal = () => {
     const el = ref.current;
     if (!el) return;
-    stopAll();
-    busy.current = false;
-    if (reducedMotion()) return;
+    el.classList.remove("px-leave", "px-enter");
+    el.style.opacity = "";
+    el.style.transform = "";
+    el.style.willChange = "";
+    leaving.current = false;
+  };
 
+  const enter = () => {
+    const el = ref.current;
+    if (!el) return;
+    reveal();
+    if (reducedMotion()) return;
+    void el.offsetWidth;
     el.style.willChange = "transform, opacity";
-    const a1 = el.animate(ENTER_TRANSFORM, { duration: 720, easing: OVERSHOOT, fill: "none" });
-    const a2 = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 340, easing: DECEL, fill: "none" });
-    running.current = [a1, a2];
-    const done = () => { el.style.willChange = ""; running.current = []; };
-    a1.finished.then(done).catch(() => {});
+    el.classList.add("px-enter");
+    const mine = ++gen.current;
+    window.setTimeout(() => {
+      if (gen.current !== mine) return;
+      el.classList.remove("px-enter");
+      el.style.willChange = "";
+    }, IN_MS + 90);
+  };
+
+  const go = (href: string) => {
+    const el = ref.current;
+    if (leaving.current) return;
+    if (!el || reducedMotion()) { commit(href); return; }
+    leaving.current = true;
+    const mine = ++gen.current;
+    el.style.willChange = "transform, opacity";
+    el.classList.remove("px-enter");
+    void el.offsetWidth;
+    el.classList.add("px-leave");
+    window.setTimeout(() => {
+      if (gen.current !== mine) return;
+      commit(href);
+      /* Kalau navigasi gagal/lambat, konten wajib muncul lagi. */
+      window.setTimeout(() => {
+        if (gen.current !== mine) return;
+        reveal();
+      }, WATCHDOG_MS);
+    }, OUT_MS);
+  };
+
+  /* Beranda selalu jadi satu-satunya tujuan back. */
+  const commit = (href: string) => {
+    if (window.location.pathname === "/") router.push(href);
+    else router.replace(href);
+  };
+
+  /* Halaman masuk langsung (deep link): susun riwayat jadi [Beranda, Halaman ini]. */
+  useEffect(() => {
+    if (based.current) return;
+    based.current = true;
+    try {
+      window.history.scrollRestoration = "auto";
+      if (window.location.pathname !== "/") {
+        const current = window.location.href;
+        const state = window.history.state;
+        window.history.replaceState(state, "", "/");
+        window.history.pushState(state, "", current);
+      }
+    } catch { /* abaikan */ }
+  }, []);
+
+  useEffect(() => {
+    gen.current += 1;
+    leaving.current = false;
+    enter();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   useEffect(() => {
-    const go = (href: string) => {
-      const el = ref.current;
-      if (busy.current) return;
-      if (!el || reducedMotion()) { router.push(href); return; }
-      busy.current = true;
-      el.style.willChange = "transform, opacity";
-      const a1 = el.animate(EXIT_TRANSFORM, { duration: 210, easing: ACCEL, fill: "forwards" });
-      const a2 = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 190, easing: ACCEL, fill: "forwards" });
-      running.current = [a1, a2];
-      a1.finished.then(() => {
-        router.push(href);
-        /* Kalau navigasi lambat, kembalikan konten agar tidak blank. */
-        safety.current = window.setTimeout(() => {
-          a1.cancel(); a2.cancel();
-          el.style.willChange = "";
-          busy.current = false;
-        }, 900);
-      }).catch(() => { busy.current = false; });
+    const el = ref.current;
+    if (!el) return;
+
+    const onAnimEnd = (e: AnimationEvent) => {
+      if (e.animationName === "px-shell-in") {
+        el.classList.remove("px-enter");
+        el.style.willChange = "";
+      }
     };
 
-    const onCustom = (e: Event) => {
-      const href = (e as CustomEvent<{ href?: string }>).detail?.href;
-      if (typeof href === "string" && href.startsWith("/")) go(href);
+    const onPop = () => {
+      if (anyOverlay() || popSuppressed()) return;
+      gen.current += 1;
+      leaving.current = false;
+      if (window.location.pathname !== "/") { router.replace("/"); return; }
+      reveal();
+      enter();
+    };
+
+    const onShow = () => { gen.current += 1; reveal(); };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !leaving.current) {
+        if (el.classList.contains("px-leave")) reveal();
+      }
     };
 
     const onClick = (e: MouseEvent) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (anyOverlay()) return;
       const target = e.target as HTMLElement | null;
       const a = target?.closest?.("a") as HTMLAnchorElement | null;
       if (!a) return;
@@ -96,19 +160,33 @@ export function PageShell({ children }: { children: ReactNode }) {
       go(url.pathname + url.search + url.hash);
     };
 
-    window.addEventListener("px:navigate", onCustom);
+    const onCustom = (e: Event) => {
+      const href = (e as CustomEvent<{ href?: string }>).detail?.href;
+      if (typeof href === "string" && href.startsWith("/")) go(href);
+    };
+
+    el.addEventListener("animationend", onAnimEnd);
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("pageshow", onShow);
+    document.addEventListener("visibilitychange", onVisible);
     document.addEventListener("click", onClick, true);
+    window.addEventListener("px:navigate", onCustom);
+
     return () => {
-      window.removeEventListener("px:navigate", onCustom);
+      el.removeEventListener("animationend", onAnimEnd);
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("pageshow", onShow);
+      document.removeEventListener("visibilitychange", onVisible);
       document.removeEventListener("click", onClick, true);
-      stopAll();
+      window.removeEventListener("px:navigate", onCustom);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   return (
-    <div ref={ref} style={{ backfaceVisibility: "hidden", transformOrigin: "50% 40%" }}>
-      {children}
-    </div>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: SHELL_CSS }} />
+      <div ref={ref} className="px-shell">{children}</div>
+    </>
   );
 }
