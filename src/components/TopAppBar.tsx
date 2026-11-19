@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { randomSeed, type Mode } from "@/lib/theme";
 import { attachRipple, Icon } from "./ui";
 import { useApp } from "./Providers";
@@ -12,7 +11,6 @@ const MODE_LABEL: Record<Mode, string> = { auto: "Otomatis", light: "Terang", da
 
 export function TopAppBar({ title, large = false, back = false }: { title: string; large?: boolean; back?: boolean }) {
   const ref = useRef<HTMLElement>(null);
-  const router = useRouter();
   const { seed, mode, setMode, setTheme } = useApp();
 
   useEffect(() => {
@@ -20,7 +18,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
     if (!el) return;
     if (!large) { el.style.setProperty("--ab-p", "1"); return; }
     let raf = 0;
-    const update = () => { raf = 0; el.style.setProperty("--ab-p", String(Math.min(1, window.scrollY / 72))); };
+    const update = () => { raf = 0; el.style.setProperty("--ab-p", String(Math.min(1, window.scrollY / 76))); };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -50,11 +48,11 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           <div className="appbar-actions">
             <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setMode(NEXT_MODE[mode])}
               aria-label={`Mode tampilan: ${MODE_LABEL[mode]}. Ketuk untuk ganti.`} title={MODE_LABEL[mode]}>
-              <Icon name={MODE_ICON[mode]} size={22} />
+              <Icon name={MODE_ICON[mode]} size={24} />
             </button>
             <button className="btn b-icon" onPointerDown={attachRipple} onClick={(e) => shuffle(e.currentTarget)}
               aria-label="Acak warna tema" title="Acak warna">
-              <Icon name="palette" size={22} />
+              <Icon name="palette" size={24} />
             </button>
           </div>
         </div>
