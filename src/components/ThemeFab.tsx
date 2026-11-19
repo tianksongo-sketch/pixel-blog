@@ -12,7 +12,7 @@ const MODES = [
 ] as const;
 
 export function ThemeFab() {
-  const { seed, mode, setTheme, setMode } = useApp();
+  const { seed, mode, setTheme, setMode, adminUi, lockAdminUi } = useApp();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export function ThemeFab() {
     const r = el.getBoundingClientRect();
     const pt = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     setOpen(false);
-    setTimeout(() => setTheme(s, pt), 320);
+    setTimeout(() => setTheme(s, pt), 340);
   };
 
   return (
@@ -33,12 +33,22 @@ export function ThemeFab() {
       <motion.button className="fab" aria-label="Acak warna" onPointerDown={attachRipple}
         onClick={() => setOpen(true)}
         initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 480, damping: 28, delay: 0.3 }}>
+        transition={{ type: "spring", stiffness: 300, damping: 22, delay: 0.35 }}>
         <Icon name="palette" size={24} />
         Warna
       </motion.button>
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Tema warna">
+        {adminUi && (
+          <div className="storage-chip" style={{ marginBottom: 18 }}>
+            <Icon name="admin_panel_settings" size={18} />
+            <span>Mode admin aktif di perangkat ini.</span>
+            <Btn variant="tonal" onClick={() => { lockAdminUi(); setOpen(false); }}>
+              <Icon name="logout" size={16} />Keluar
+            </Btn>
+          </div>
+        )}
+
         <div className="seg" role="group" aria-label="Mode tampilan">
           {MODES.map((m) => (
             <button key={m.id} className={mode === m.id ? "on" : ""} onPointerDown={attachRipple}
