@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { TopAppBar } from "@/components/TopAppBar";
 import { AdminApp } from "@/components/AdminApp";
+import { BackupPanel } from "@/components/BackupPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,9 @@ export default function AdminPage() {
     <>
       <TopAppBar title="Admin" back />
       <AdminApp />
+      <div className="container" style={{ paddingBottom: 120 }}>
+        <BackupPanel />
+      </div>
     </>
   );
 }
