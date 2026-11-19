@@ -206,4 +206,4 @@ export function useParallax<T extends HTMLElement>(strength = 10) {
     };
   }, [strength]);
   return ref;
-    }
+}
