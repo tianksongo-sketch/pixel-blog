@@ -5,12 +5,13 @@ import "./globals.css";
 import { isSeed, randomSeed, schemeVars, themeCss, type Mode } from "@/lib/theme";
 import { Providers } from "@/components/Providers";
 import { Footer } from "@/components/Footer";
+import { BottomNav } from "@/components/BottomNav";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: { default: "F4KUYY", template: "%s · F4KUYY" },
-  description: "Catatan, cerita, dan hal-hal yang layak dibagikan — dengan gaya Material You ala Google Pixel.",
+  description: "Catatan, cerita, dan hal-hal yang layak dibagikan — dibangun dengan Material 3 Expressive.",
   icons: { icon: "/favicon.svg" }
 };
 
@@ -47,8 +48,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@8..144,400..800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400..700&display=swap" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-        <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&display=swap" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
         <style id="px-theme" dangerouslySetInnerHTML={{ __html: themeCss(seed) }} />
       </head>
@@ -56,6 +58,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Providers initial={{ seed, mode, consent, name, hasVid }}>
           {children}
           <Footer />
+          <BottomNav />
         </Providers>
       </body>
     </html>
