@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type Mode } from "@/lib/theme";
+import { AnimatePresence, motion } from "motion/react";
+import type { Mode } from "@/lib/theme";
 import { haptic, tick } from "@/lib/motion";
 import { attachRipple, Icon } from "./ui";
 import { useApp } from "./Providers";
-import { GlassClock } from "./GlassClock";
 
 const NEXT: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
 const ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
@@ -19,18 +19,134 @@ const stealth: CSSProperties = {
   userSelect: "none", WebkitTapHighlightColor: "transparent"
 };
 
+/* ---------- jam monokrom, sefile supaya tidak ada dependensi hilang ---------- */
+const CLOCK_CSS = `
+.mc{display:inline-flex;align-items:center;gap:12px}
+.mc-face{
+  position:relative;display:inline-flex;align-items:baseline;gap:1px;
+  padding:6px 12px;border-radius:var(--g-pill,999px);
+  background:linear-gradient(150deg,var(--g-fill-2,rgba(255,255,255,.10)),transparent);
+  border:1px solid var(--g-line,rgba(255,255,255,.14));
+  backdrop-filter:blur(20px) brightness(1.06);
+  -webkit-backdrop-filter:blur(20px) brightness(1.06);
+  box-shadow:inset 0 1px 0 var(--g-top,rgba(255,255,255,.5));
+  overflow:hidden;
+}
+.mc-face::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.16) 50%,transparent 58%);
+  transform:translateX(-100%);
+  animation:mc-sweep calc(9s * var(--mo,1)) var(--g-ease,cubic-bezier(.16,1,.3,1)) infinite;
+}
+@keyframes mc-sweep{0%,74%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.mc-digits{
+  display:inline-flex;font-family:var(--font-num,ui-monospace,monospace);
+  font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em;
+  line-height:1;color:var(--ink,#fff);
+}
+.mc-col{position:relative;display:inline-grid;width:.62em;height:1.06em;overflow:hidden}
+.mc-d{grid-area:1/1;display:block;text-align:center}
+.mc-sep{opacity:.38;padding:0 1px}
+.mc-sec{font-size:.48em;margin-left:6px;align-self:flex-start;margin-top:.16em;opacity:.5;letter-spacing:0}
+.mc-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+.mc-day{font-family:var(--font-num,ui-monospace);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink,#fff);white-space:nowrap}
+.mc-sub{font-family:var(--font-num,ui-monospace);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--g-dim-2,rgba(255,255,255,.4));white-space:nowrap}
+.mc-ring{flex:none;color:var(--ink,#fff)}
+.mc-ring circle{transition:stroke-dashoffset calc(900ms * var(--mo,1)) var(--g-ease,cubic-bezier(.16,1,.3,1))}
+.mc.row .mc-digits{font-size:15px}
+.mc.hero .mc-digits{font-size:clamp(34px,8vw,54px)}
+.mc.hero .mc-face{padding:12px 20px;border-radius:var(--g-r-l,30px)}
+.mc-hero{display:flex;align-items:center;gap:16px;flex:none}
+.ab-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+@media (max-width:900px){.mc.hero{display:none}}
+@media (max-width:520px){.mc.row .mc-sec{display:none}}
+:root[data-motion="reduce"] .mc-face::after{animation:none}
+@media (prefers-reduced-motion:reduce){.mc-face::after{animation:none}}
+`;
+
+const DIGIT_SPRING = { type: "spring" as const, stiffness: 520, damping: 34, mass: .7 };
+
+function Digit({ v }: { v: string }) {
+  return (
+    <span className="mc-col">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={v} className="mc-d"
+          initial={{ y: "0.9em", opacity: 0, filter: "blur(4px)" }}
+          animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+          exit={{ y: "-0.9em", opacity: 0, filter: "blur(4px)" }}
+          transition={DIGIT_SPRING}
+        >{v}</motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+function MonoClock({ variant }: { variant: "row" | "hero" }) {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    let id = 0;
+    const tickTock = () => {
+      setNow(new Date());
+      id = window.setTimeout(tickTock, 1000 - (Date.now() % 1000));
+    };
+    id = window.setTimeout(tickTock, 1000 - (Date.now() % 1000));
+    return () => clearTimeout(id);
+  }, []);
+
+  const hh = now ? String(now.getHours()).padStart(2, "0") : "--";
+  const mm = now ? String(now.getMinutes()).padStart(2, "0") : "--";
+  const ss = now ? String(now.getSeconds()).padStart(2, "0") : "--";
+  const pct = now ? now.getSeconds() / 60 : 0;
+  const R = 13;
+  const C = 2 * Math.PI * R;
+
+  let day = "\u00A0";
+  let sub = "\u00A0";
+  if (now) {
+    day = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+    const h = now.getHours();
+    const greet = h < 5 ? "Selamat malam" : h < 11 ? "Selamat pagi" : h < 15 ? "Selamat siang" : h < 19 ? "Selamat sore" : "Selamat malam";
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "lokal").split("/").pop()?.replace(/_/g, " ") ?? "lokal";
+    sub = `${greet} · ${tz}`;
+  }
+
+  return (
+    <div className={`mc ${variant}`} suppressHydrationWarning>
+      <div className="mc-face">
+        <span className="mc-digits" aria-label={now ? `${hh}:${mm}:${ss}` : "memuat jam"}>
+          <Digit v={hh[0]} /><Digit v={hh[1]} />
+          <span className="mc-sep">:</span>
+          <Digit v={mm[0]} /><Digit v={mm[1]} />
+          <span className="mc-sec">{ss}</span>
+        </span>
+      </div>
+      {variant === "hero" && (
+        <div className="mc-hero">
+          <svg className="mc-ring" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+            <circle cx="17" cy="17" r={R} fill="none" stroke="currentColor" strokeOpacity=".18" strokeWidth="2.5" />
+            <circle cx="17" cy="17" r={R} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 17 17)" />
+          </svg>
+          <div className="mc-meta">
+            <span className="mc-day">{day}</span>
+            <span className="mc-sub">{sub}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- app bar ---------- */
 export function TopAppBar({ title, large = false, back = false }: { title: string; large?: boolean; back?: boolean }) {
   const ref = useRef<HTMLElement>(null);
   const router = useRouter();
   const { mode, setMode, adminUi, registerAdminTap, lockAdminUi } = useApp();
   const lp = useRef<number | null>(null);
   const fired = useRef(false);
-  const [hasClock, setHasClock] = useState(false);
-
-  useEffect(() => {
-    /* GlassClock hanya ada bila kamu sudah memasangnya dari versi sebelumnya. */
-    setHasClock(typeof GlassClock === "function");
-  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -52,6 +168,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
 
   return (
     <>
+      <style dangerouslySetInnerHTML={{ __html: CLOCK_CSS }} />
       <header ref={ref} className={`appbar${large ? "" : " appbar-solid"}`}>
         <div className="appbar-bg" />
         <div className="appbar-row container">
@@ -66,7 +183,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           )}
           <span className="appbar-title-sm">{title}</span>
           <div className="appbar-actions">
-            {hasClock && <GlassClock variant="compact" />}
+            <MonoClock variant="row" />
             {adminUi && (
               <button className="btn b-icon" aria-label="Buka panel admin" title="Panel admin · tekan lama untuk keluar"
                 onPointerDown={(e) => { attachRipple(e); down(); }}
@@ -87,16 +204,17 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           </div>
         </div>
         {large && (
-          <div className="appbar-hero container" style={{ height: "auto", minHeight: 96, paddingBottom: 18 }}>
-            <h1 className="appbar-title-lg">
+          <div className="appbar-hero container ab-hero" style={{ height: "auto", minHeight: 104, paddingBottom: 18 }}>
+            <h1 className="appbar-title-lg" style={{ flex: "1 1 240px", minWidth: 0 }}>
               <button type="button" style={stealth} onClick={() => registerAdminTap("brand")} aria-label={title}>
                 {title}
               </button>
             </h1>
+            <MonoClock variant="hero" />
           </div>
         )}
       </header>
-      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} style={large ? { height: "calc(184px + var(--safe-t))" } : undefined} />
+      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} style={large ? { height: "calc(196px + var(--safe-t))" } : undefined} />
     </>
   );
 }
