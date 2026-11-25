@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
 import { attachRipple, Btn, Icon, Sheet, Switch } from "./ui";
 import { useApp } from "./Providers";
-import { DEFAULT_MOTION, getMotion, haptic, loadMotion, setMotion, subscribeMotion, tick, type MotionPrefs } from "@/lib/motion";
+import { DEFAULT_MOTION, haptic, loadMotion, setMotion, subscribeMotion, tick, type MotionPrefs } from "@/lib/motion";
 import type { Mode } from "@/lib/theme";
 
 const MODES: Array<{ id: Mode; label: string; icon: string }> = [
@@ -12,8 +11,56 @@ const MODES: Array<{ id: Mode; label: string; icon: string }> = [
   { id: "dark", label: "Dark", icon: "dark_mode" }
 ];
 
+/* ==========================================================================
+   LAPISAN PERBAIKAN
+   1. Foto postingan berwarna lagi — hanya UI yang monokrom.
+   2. App bar punya dasar padat + blur, jadi konten tidak menembus saat digulir.
+   3. FAB "Tampilan" dihapus; FAB lain turun ke posisi normal.
+   ========================================================================== */
+const FIX_CSS = `
+/* --- 1. foto berwarna --- */
+.card-media img,
+.article-hero img,
+.article-body img,
+.thumb,
+.alp-preview img,
+.cover-row img,
+.photo-preview img,
+.rt-editor img,
+.gs-tile img { filter: none !important; }
+.lqip { filter: blur(18px) !important; }
+
+/* --- 2. app bar tidak lagi tembus pandang --- */
+.appbar { isolation: isolate; }
+.appbar-bg {
+  opacity: 1 !important;
+  background-color: color-mix(in srgb, var(--canvas) 88%, transparent) !important;
+  background-image: linear-gradient(180deg, var(--g-fill-2), transparent) !important;
+  backdrop-filter: blur(28px) saturate(150%) brightness(1.06) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(150%) brightness(1.06) !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--g-line) !important;
+  box-shadow: inset 0 1px 0 var(--g-top), 0 12px 34px rgba(0,0,0,.42) !important;
+}
+:root[data-mode="light"] .appbar-bg { box-shadow: inset 0 1px 0 var(--g-top), 0 12px 30px rgba(0,0,0,.10) !important; }
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  .appbar-bg { background-color: var(--canvas) !important; }
+}
+/* judul kecil tetap muncul bertahap, tapi bar-nya sendiri selalu terbaca */
+.appbar-title-sm { opacity: var(--ab-p, 1); }
+.appbar-solid .appbar-title-sm { opacity: 1; }
+
+/* --- 3. tanpa FAB Tampilan, FAB lain turun --- */
+.fab-admin,
+.fab-top { bottom: calc(16px + var(--nav-h, 0px) + var(--safe-b)) !important; }
+.snackbar { bottom: calc(84px + var(--nav-h, 0px) + var(--safe-b)) !important; }
+
+/* ruang bawah halaman tidak perlu setinggi dulu */
+.page { padding-bottom: calc(112px + var(--nav-h, 0px) + var(--safe-b)) !important; }
+`;
+
 /* CATATAN: nama export tetap ThemeFab supaya Providers tidak perlu diubah.
-            Isinya sekarang panel pengaturan — pemilih warna dihapus total. */
+            Isinya sekarang HANYA panel pengaturan — tombol mengapungnya dihapus. */
 export function ThemeFab() {
   const { mode, setMode, adminUi, lockAdminUi } = useApp();
   const [open, setOpen] = useState(false);
@@ -25,21 +72,18 @@ export function ThemeFab() {
     const buka = () => setOpen(true);
     window.addEventListener("px:open-theme", buka);
     window.addEventListener("px:open-settings", buka);
-    return () => { un(); window.removeEventListener("px:open-theme", buka); window.removeEventListener("px:open-settings", buka); };
+    return () => {
+      un();
+      window.removeEventListener("px:open-theme", buka);
+      window.removeEventListener("px:open-settings", buka);
+    };
   }, []);
 
   const ubah = (patch: Partial<MotionPrefs>) => { setP(setMotion(patch)); haptic(6); tick(720); };
 
   return (
     <>
-      <motion.button className="fab" aria-label="Pengaturan tampilan"
-        onPointerDown={(e) => { attachRipple(e); haptic(6); }}
-        onClick={() => { setOpen(true); tick(600); }}
-        initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 320, damping: 24, delay: .3 }}>
-        <Icon name="tune" size={22} />
-        Tampilan
-      </motion.button>
+      <style dangerouslySetInnerHTML={{ __html: FIX_CSS }} />
 
       <Sheet open={open} onClose={() => setOpen(false)} title="Pengaturan">
         <div className="gl-ctl-name" style={{ marginBottom: 10 }}>Tema</div>
@@ -108,7 +152,7 @@ export function ThemeFab() {
 
         <p className="set-note">
           <Icon name="contrast" size={15} />
-          Blog ini monokrom. Tidak ada pemilih warna — hitam dan putih saja, mengikuti tema perangkatmu.
+          Antarmuka hitam-putih. Foto postingan tetap berwarna penuh.
         </p>
       </Sheet>
     </>
