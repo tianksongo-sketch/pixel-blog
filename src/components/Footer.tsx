@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { haptic, tick } from "@/lib/motion";
 import { attachRipple } from "./ui";
-import { BUILD, BUILD_LABEL } from "@/lib/version";
+import { BUILD } from "@/lib/version";
 import { useApp } from "./Providers";
 
 export function Footer() {
@@ -24,25 +24,24 @@ export function Footer() {
   };
 
   return (
-    <footer className="footer">
+    <footer className="footer" data-build={BUILD}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
         <button
           type="button" onPointerDown={attachRipple} onClick={openSettings}
-          className="btn b-text" style={{ minHeight: 32, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
+          className="btn b-text" aria-label="Buka pengaturan tampilan"
+          style={{ minHeight: 32, fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase" }}
         >
           Pengaturan
         </button>
-        <span className="dot" />
+        <span className="dot" aria-hidden="true" />
         <span>
           <span className="copy" role="button" tabIndex={0} onClick={onTap}
             onKeyDown={(e) => { if (e.key === "Enter") onTap(); }} aria-label="Hak cipta">©</span>
           {" 2026 F4KUYY"}
         </span>
-        <span className="dot" />
-        <span data-build={BUILD} title="Versi build">{BUILD_LABEL}</span>
       </div>
       <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", opacity: .55 }}>
-        Hitam · Putih · Kaca
+        Hitam · Putih · Laut
       </div>
     </footer>
   );

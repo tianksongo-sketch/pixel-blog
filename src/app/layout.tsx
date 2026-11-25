@@ -7,6 +7,7 @@ import "./soft.css";
 import "./glass.css";
 import { schemeVars, themeCss, type Mode } from "@/lib/theme";
 import { siteUrl } from "@/lib/utils";
+import { defaultOgImage, SITE_DESC } from "@/lib/seo";
 import { Providers } from "@/components/Providers";
 import { Footer } from "@/components/Footer";
 import { BottomNav } from "@/components/BottomNav";
@@ -17,15 +18,24 @@ import { SeaBackground } from "@/components/SeaBackground";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl()),
-  title: { default: "F4KUYY", template: "%s · F4KUYY" },
-  description: "Catatan, cerita, dan hal-hal yang layak dibagikan. Hitam, putih, kaca, dan laut.",
-  icons: { icon: "/favicon.svg" },
-  alternates: { canonical: "/", types: { "application/rss+xml": "/feed.xml" } },
-  openGraph: { siteName: "F4KUYY", locale: "id_ID", type: "website" },
-  robots: { index: true, follow: true }
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const base = siteUrl();
+  const og = await defaultOgImage();
+  return {
+    metadataBase: new URL(base),
+    title: { default: "F4KUYY", template: "%s | F4KUYY" },
+    description: SITE_DESC,
+    icons: { icon: "/favicon.svg" },
+    alternates: { canonical: `${base}/`, types: { "application/rss+xml": `${base}/feed.xml` } },
+    openGraph: {
+      siteName: "F4KUYY", locale: "id_ID", type: "website", url: `${base}/`,
+      title: "F4KUYY", description: SITE_DESC,
+      images: og ? [{ url: og, width: 1200, height: 900, alt: "F4KUYY" }] : undefined
+    },
+    twitter: { card: "summary_large_image", title: "F4KUYY", description: SITE_DESC, images: og ? [og] : undefined },
+    robots: { index: true, follow: true }
+  };
+}
 
 export async function generateViewport(): Promise<Viewport> {
   const c = await cookies();
@@ -40,6 +50,26 @@ export async function generateViewport(): Promise<Viewport> {
     colorScheme: dark ? "dark light" : "light dark"
   };
 }
+
+/* Ikon hanya ditampilkan setelah font Material Symbols benar-benar termuat,
+   supaya tidak pernah terlihat sebagai kata-kata mentah saat font gagal. */
+const ICONS_SCRIPT = `(function(){
+  var d=document,n=0;
+  function ok(){try{return !!(d.fonts&&d.fonts.check('16px "Material Symbols Rounded"'))}catch(e){return false}}
+  function on(){d.documentElement.classList.add('icons-on')}
+  if(ok()){on();return}
+  var t=setInterval(function(){n++;if(ok()){on();clearInterval(t)}else if(n>40){clearInterval(t)}},250);
+  if(d.fonts&&d.fonts.ready){d.fonts.ready.then(function(){if(ok())on()})}
+})();`;
+
+const A11Y_CSS = `
+html:not(.icons-on) .ms{visibility:hidden}
+:root{--g-dim:rgba(255,255,255,.66);--g-dim-2:rgba(255,255,255,.55)}
+:root[data-mode="light"]{--g-dim:rgba(0,0,0,.66);--g-dim-2:rgba(0,0,0,.55)}
+@media (prefers-color-scheme: light){
+  :root:not([data-mode="dark"]){--g-dim:rgba(0,0,0,.66);--g-dim-2:rgba(0,0,0,.55)}
+}
+`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const c = await cookies();
@@ -84,6 +114,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
         <link rel="alternate" type="application/rss+xml" title="F4KUYY" href="/feed.xml" />
         <style id="px-theme" dangerouslySetInnerHTML={{ __html: themeCss() }} />
+        <style id="px-a11y" dangerouslySetInnerHTML={{ __html: A11Y_CSS }} />
+        <script dangerouslySetInnerHTML={{ __html: ICONS_SCRIPT }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteLd) }} />
       </head>
       <body>

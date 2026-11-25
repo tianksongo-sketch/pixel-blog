@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./ui";
 import { calmNow, getMotion } from "@/lib/motion";
 
-type Stats = { posts: number; likes: number; comments: number; views: number; labels: number };
+export type HeroStatsData = { posts: number; likes: number; comments: number; views: number; labels: number };
 
 function useCountUp(target: number, run: boolean) {
   const [n, setN] = useState(0);
@@ -15,8 +15,7 @@ function useCountUp(target: number, run: boolean) {
     let raf = 0;
     const step = (t: number) => {
       const p = Math.min(1, (t - t0) / dur);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setN(Math.round(target * eased));
+      setN(Math.round(target * (1 - Math.pow(1 - p, 3))));
       if (p < 1) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
@@ -35,17 +34,9 @@ function Tile({ value, label, icon, run }: { value: number; label: string; icon:
   );
 }
 
-export function HeroStats() {
-  const [s, setS] = useState<Stats | null>(null);
+export function HeroStats({ stats }: { stats: HeroStatsData }) {
   const [run, setRun] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    void fetch("/api/stats", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j) setS(j as Stats); })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -55,18 +46,19 @@ export function HeroStats() {
     return () => io.disconnect();
   }, []);
 
-  const d = s ?? { posts: 0, likes: 0, comments: 0, views: 0, labels: 0 };
+  /* Jangan tampilkan blok angka kalau memang belum ada data sama sekali. */
+  const empty = stats.posts === 0 && stats.likes === 0 && stats.comments === 0 && stats.views === 0;
 
   return (
     <div ref={ref}>
       <div className="gs-strip">
-        <span>Arsip</span><i /><span>{d.labels} label</span>
+        <span>Arsip</span><i /><span>{stats.labels} label</span>
       </div>
-      <div className="gs">
-        <Tile value={d.posts} label="Tulisan" icon="article" run={run} />
-        <Tile value={d.views} label="Pembaca" icon="visibility" run={run} />
-        <Tile value={d.likes} label="Suka" icon="favorite" run={run} />
-        <Tile value={d.comments} label="Komentar" icon="chat_bubble" run={run} />
+      <div className="gs" style={empty ? { opacity: .45 } : undefined}>
+        <Tile value={stats.posts} label="Tulisan" icon="article" run={run} />
+        <Tile value={stats.views} label="Pembaca" icon="visibility" run={run} />
+        <Tile value={stats.likes} label="Suka" icon="favorite" run={run} />
+        <Tile value={stats.comments} label="Komentar" icon="chat_bubble" run={run} />
       </div>
     </div>
   );

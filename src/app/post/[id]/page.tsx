@@ -5,6 +5,7 @@ import { getArticle, getFull, getNeighbors } from "@/lib/db";
 import { getViews } from "@/lib/views";
 import { isAuthed } from "@/lib/auth";
 import { siteUrl } from "@/lib/utils";
+import { defaultOgImage, SITE_DESC } from "@/lib/seo";
 import { TopAppBar } from "@/components/TopAppBar";
 import { PostDetail } from "@/components/PostDetail";
 
@@ -18,20 +19,23 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!p || p.deletedAt) return { title: "Tidak ditemukan" };
   const base = siteUrl();
   const url = `${base}/post/${id}`;
-  const img = p.hasCover ? `${base}/api/img/${id}?v=${p.ver}` : null;
+  const img = p.hasCover ? `${base}/api/img/${id}?v=${p.ver}` : (await defaultOgImage());
   return {
     title: p.title,
-    description: p.excerpt || `${p.title} — F4KUYY.`,
+    description: p.excerpt || SITE_DESC,
     alternates: { canonical: url },
     keywords: p.labels,
     openGraph: {
-      title: p.title, description: p.excerpt, url, type: "article",
+      title: p.title, description: p.excerpt || SITE_DESC, url, type: "article",
       publishedTime: new Date(p.createdAt).toISOString(),
       modifiedTime: new Date(p.updatedAt).toISOString(),
-      authors: [p.author], tags: p.labels,
-      images: img ? [{ url: img, width: 1200, height: 900 }] : undefined
+      authors: [p.author], tags: p.labels, locale: "id_ID", siteName: "F4KUYY",
+      images: img ? [{ url: img, width: 1200, height: 900, alt: p.title }] : undefined
     },
-    twitter: { card: img ? "summary_large_image" : "summary", title: p.title, description: p.excerpt, images: img ? [img] : undefined }
+    twitter: {
+      card: "summary_large_image", title: p.title, description: p.excerpt || SITE_DESC,
+      images: img ? [img] : undefined
+    }
   };
 }
 
@@ -82,7 +86,7 @@ export default async function PostPage({ params }: Params) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <TopAppBar title="Postingan" back />
+      <TopAppBar title="Tulisan" back />
       <PostDetail post={data.post} stats={data.stats} comments={data.comments} newer={newer} older={older} views={views} />
     </>
   );

@@ -21,7 +21,6 @@ const stealth: CSSProperties = {
   userSelect: "none", WebkitTapHighlightColor: "transparent"
 };
 
-/* Header STICKY: ikut aliran dokumen, jadi tidak mungkin menimpa konten. */
 const BAR_CSS = `
 .ab2{position:sticky;top:0;z-index:40;padding-top:var(--safe-t,0px)}
 .ab2-bg{
@@ -50,7 +49,7 @@ const BAR_CSS = `
 .ab2-actions{margin-left:auto;display:flex;align-items:center;gap:2px;flex:none}
 .ab2-actions .btn.b-icon{
   width:40px;height:40px;min-height:40px;padding:0;border:0;border-radius:50%;
-  color:var(--g-dim,rgba(255,255,255,.6));background:transparent;
+  color:var(--g-dim,rgba(255,255,255,.66));background:transparent;
 }
 .ab2-actions .btn.b-icon:hover{color:var(--ink,#fff);background:var(--g-fill-2,rgba(255,255,255,.1))}
 .ab2-hero{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding-bottom:16px}
@@ -92,7 +91,7 @@ const CLOCK_CSS = `
 .mc-sec{font-size:.5em;margin-left:6px;align-self:flex-start;margin-top:.16em;opacity:.5}
 .mc-day{
   margin-left:10px;font-family:var(--font-num,ui-monospace);font-size:10px;
-  letter-spacing:.12em;text-transform:uppercase;color:var(--g-dim-2,rgba(255,255,255,.4));white-space:nowrap;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--g-dim-2,rgba(255,255,255,.55));white-space:nowrap;
 }
 @media (max-width:900px){.mc-day{display:none}}
 @media (max-width:480px){.mc-sec{display:none}}
@@ -134,14 +133,14 @@ function MonoClock() {
   return (
     <div className="mc" suppressHydrationWarning>
       <div className="mc-face">
-        <span className="mc-digits" aria-label={now ? `${hh}:${mm}:${ss}` : "memuat jam"}>
+        <span className="mc-digits" aria-label={now ? `Pukul ${hh} lewat ${mm} menit ${ss} detik` : "memuat jam"}>
           <Digit v={hh[0]} /><Digit v={hh[1]} />
-          <span className="mc-sep">:</span>
+          <span className="mc-sep" aria-hidden="true">:</span>
           <Digit v={mm[0]} /><Digit v={mm[1]} />
-          <span className="mc-sec">{ss}</span>
+          <span className="mc-sec" aria-hidden="true">{ss}</span>
         </span>
       </div>
-      {day && <span className="mc-day">{day}</span>}
+      {day && <span className="mc-day" aria-hidden="true">{day}</span>}
     </div>
   );
 }
@@ -165,7 +164,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
       const p = Math.min(1, window.scrollY / 88);
       el.style.setProperty("--ab-p", String(p));
       hero.style.height = `${Math.max(0, HERO_H * (1 - p))}px`;
-      hero.style.opacity = String(1 - p * 1.15);
+      hero.style.opacity = String(Math.max(0, 1 - p * 1.15));
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
@@ -191,11 +190,11 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
         <div className="ab2-bg" />
         <div className="ab2-row container">
           {back ? (
-            <Link href="/" prefetch className="btn b-icon" aria-label="Kembali" onPointerDown={attachRipple}>
+            <Link href="/" prefetch className="btn b-icon" aria-label="Kembali ke beranda" onPointerDown={attachRipple}>
               <Icon name="arrow_back" size={22} />
             </Link>
           ) : (
-            <Link href="/" prefetch className="brand" aria-label="Beranda" style={{ marginLeft: -6 }}>
+            <Link href="/" prefetch className="brand" aria-label="Beranda F4KUYY" style={{ marginLeft: -6 }}>
               <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></span>
             </Link>
           )}
@@ -211,7 +210,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
             )}
             <button className="btn b-icon" onPointerDown={attachRipple}
               onClick={() => { setMode(NEXT[mode]); haptic(8); tick(640); }}
-              aria-label={`Tema: ${LABEL[mode]}`} title={LABEL[mode]}>
+              aria-label={`Ganti tema, sekarang ${LABEL[mode]}`} title={LABEL[mode]}>
               <Icon name={ICON[mode]} size={21} />
             </button>
           </div>
@@ -243,8 +242,8 @@ export function Glance() {
   return (
     <section className="glance" style={{ paddingTop: 18 }}>
       <h2>
-        <button type="button" style={stealth} onClick={() => registerAdminTap("glance")} aria-label="At a glance">
-          At a glance
+        <button type="button" style={stealth} onClick={() => registerAdminTap("glance")} aria-label="Sekilas">
+          Sekilas
         </button>
       </h2>
       <p suppressHydrationWarning>{line}</p>

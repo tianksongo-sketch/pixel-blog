@@ -19,12 +19,12 @@ export function BottomNav() {
       window.dispatchEvent(new Event("px:focus-search"));
     }
   };
-  const goTheme = () => window.dispatchEvent(new Event("px:open-theme"));
+  const goTheme = () => window.dispatchEvent(new Event("px:open-settings"));
   const onAbout = pathname.startsWith("/about");
 
   return (
     <nav className="navbar" aria-label="Navigasi utama">
-      <Link href="/" prefetch className={atHome ? "on" : ""} aria-current={atHome ? "page" : undefined}>
+      <Link href="/" prefetch className={atHome ? "on" : ""} aria-current={atHome ? "page" : undefined} aria-label="Beranda">
         <span className="nav-ind" onPointerDown={attachRipple}><Icon name="home" size={24} fill={atHome} /></span>
         <span className="nav-label">Beranda</span>
       </Link>
@@ -32,13 +32,13 @@ export function BottomNav() {
         <span className="nav-ind" onPointerDown={attachRipple}><Icon name="search" size={24} /></span>
         <span className="nav-label">Cari</span>
       </button>
-      <button type="button" onClick={goTheme} aria-label="Ubah tema warna">
-        <span className="nav-ind" onPointerDown={attachRipple}><Icon name="palette" size={24} /></span>
+      <button type="button" onClick={goTheme} aria-label="Buka pengaturan tampilan">
+        <span className="nav-ind" onPointerDown={attachRipple}><Icon name="tune" size={24} /></span>
         <span className="nav-label">Tema</span>
       </button>
-      <Link href="/about" prefetch className={onAbout ? "on" : ""} aria-current={onAbout ? "page" : undefined}>
+      <Link href="/about" prefetch className={onAbout ? "on" : ""} aria-current={onAbout ? "page" : undefined} aria-label="Tentang blog ini">
         <span className="nav-ind" onPointerDown={attachRipple}><Icon name="info" size={24} fill={onAbout} /></span>
-        <span className="nav-label">About blog</span>
+        <span className="nav-label">Tentang</span>
       </Link>
     </nav>
   );
