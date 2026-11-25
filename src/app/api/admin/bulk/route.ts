@@ -57,10 +57,8 @@ export async function POST(req: NextRequest) {
 
   const b = await req.json().catch(() => ({}));
   const action = String(b.action ?? "");
-  const allowed = ["purge", "duplicate", "publish", "draft", "trash", "restore"];
-  if (!allowed.includes(action)) return NextResponse.json({ error: "Aksi tidak dikenal" }, { status: 400 });
   const ids: string[] = Array.isArray(b.ids)
-    ? [...new Set(b.ids.filter((x: unknown): x is string => typeof x === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(x)))].slice(0, 60)
+    ? b.ids.map((x: unknown) => String(x).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40)).filter(Boolean).slice(0, 60)
     : [];
   if (!ids.length) return NextResponse.json({ error: "Tidak ada yang dipilih" }, { status: 400 });
 
@@ -78,7 +76,6 @@ export async function POST(req: NextRequest) {
       await redis.del(`img:${id}`);
       await redis.del(`likes:${id}`);
       await redis.del(`comments:${id}`);
-      await redis.del(`views:${id}`);
       await redis.zrem("posts", id).catch(() => {});
       changed++;
       continue;

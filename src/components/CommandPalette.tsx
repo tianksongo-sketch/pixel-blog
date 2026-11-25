@@ -19,7 +19,6 @@ export function CommandPalette() {
   const [items, setItems] = useState<Item[]>([]);
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [glassOn, setGlassOn] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const pushed = useRef(false);
@@ -38,10 +37,6 @@ export function CommandPalette() {
     window.addEventListener("keydown", onKey);
     window.addEventListener("px:open-palette", onOpen);
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("px:open-palette", onOpen); };
-  }, []);
-
-  useEffect(() => {
-    try { setGlassOn(localStorage.getItem("px:glass") === "on"); } catch { setGlassOn(false); }
   }, []);
 
   useEffect(() => {
@@ -75,12 +70,6 @@ export function CommandPalette() {
       { key: "a-theme", group: "Aksi", icon: "palette", title: "Ubah tema warna", sub: "14 warna dasar Material You", run: () => { close(); window.dispatchEvent(new Event("px:open-theme")); } },
       { key: "a-shuffle", group: "Aksi", icon: "casino", title: "Acak warna sekarang", sub: "Warna baru setiap ketukan", run: () => { setTheme(randomSeed(seed)); close(); } },
       { key: "a-mode", group: "Aksi", icon: mode === "dark" ? "light_mode" : "dark_mode", title: mode === "dark" ? "Mode terang" : "Mode gelap", sub: "Ganti tampilan", run: () => { setMode(mode === "dark" ? "light" : "dark"); close(); } },
-      { key: "a-glass", group: "Aksi", icon: glassOn ? "blur_off" : "blur_on", title: glassOn ? "Matikan Liquid Glass" : "Nyalakan Liquid Glass", sub: "Efek kaca, cahaya, dan sorot kartu", run: () => {
-        const next = !document.documentElement.dataset.glass || document.documentElement.dataset.glass !== "on";
-        document.documentElement.dataset.glass = next ? "on" : "off";
-        try { localStorage.setItem("px:glass", next ? "on" : "off"); } catch { /* preferensi visual opsional */ }
-        setGlassOn(next); close();
-      } },
       { key: "a-rss", group: "Aksi", icon: "rss_feed", title: "Langganan RSS", sub: "/feed.xml", run: () => { window.open("/feed.xml", "_blank", "noopener"); close(); } },
       { key: "a-copy", group: "Aksi", icon: "link", title: "Salin tautan beranda", sub: window.location.origin, run: () => { void navigator.clipboard?.writeText(window.location.origin).then(() => snack("Tautan disalin")).catch(() => snack("Gagal menyalin")); close(); } }
     ];
@@ -94,7 +83,7 @@ export function CommandPalette() {
       }));
     const acts = actions.filter((a) => !needle || (a.title + " " + a.sub).toLowerCase().includes(needle));
     return [...posts, ...acts];
-  }, [q, items, mode, seed, glassOn, close, go, setMode, setTheme, snack]);
+  }, [q, items, mode, seed, close, go, setMode, setTheme, snack]);
 
   useEffect(() => { setCursor(0); }, [q]);
 

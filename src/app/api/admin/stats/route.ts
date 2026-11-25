@@ -1,48 +1,75 @@
 import { NextResponse } from "next/server";
-import { adminList, getImg, trashList } from "@/lib/db";
+import { redis, listCards, commentCount, likeCount } from "@/lib/db";
+import { getViews } from "@/lib/views";
 import { isAuthed } from "@/lib/auth";
-import { getViewsMany } from "@/lib/views";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+async function scanKeys(pattern: string): Promise<string[]> {
+  if (!redis) return [];
+  const out: string[] = [];
+  try {
+    let cursor = "0";
+    for (let i = 0; i < 40; i++) {
+      const r = (await redis.scan(cursor, { match: pattern, count: 200 })) as [string, string[]];
+      (r?.[1] ?? []).forEach((k) => out.push(String(k)));
+      const next = String(r?.[0] ?? "0");
+      if (!next || next === "0") break;
+      cursor = next;
+    }
+  } catch { /* abaikan */ }
+  return [...new Set(out)];
+}
+
+async function totalBytes(keys: string[]): Promise<number> {
+  if (!redis || !keys.length) return 0;
+  let sum = 0;
+  for (const k of keys) {
+    try { sum += Number(await redis.strlen(k)) || 0; } catch { /* abaikan */ }
+  }
+  return sum;
+}
 
 export async function GET() {
   if (!(await isAuthed())) return NextResponse.json({ error: "Tidak diizinkan" }, { status: 401 });
 
-  try {
-    const [posts, trash] = await Promise.all([adminList(), trashList()]);
-    const all = [...posts, ...trash];
-    const active = posts.filter((post) => !post.deletedAt);
-    const views = await getViewsMany(active.map((post) => post.id));
-    const images = all.filter((post) => post.hasCover);
+  const cards = await listCards(true).catch(() => []);
+  const active = cards.filter((c) => !c.deletedAt);
+  const trashed = cards.filter((c) => c.deletedAt);
 
-    const postBytes = Buffer.byteLength(JSON.stringify(all.map(({ commentsList: _comments, ...post }) => post)), "utf8");
-    let imageBytes = 0;
-    for (let i = 0; i < images.length; i += 20) {
-      const batch = await Promise.all(images.slice(i, i + 20).map((post) => getImg(post.id)));
-      imageBytes += batch.reduce((sum, image) => sum + (image ? Buffer.byteLength(image, "utf8") : 0), 0);
-    }
+  const [comments, likes, views] = await Promise.all([
+    Promise.all(active.map((c) => commentCount(c.id))),
+    Promise.all(active.map((c) => likeCount(c.id))),
+    Promise.all(active.map((c) => getViews(c.id)))
+  ]);
 
-    const top = active
-      .filter((post) => post.status === "published")
-      .map((post) => ({ id: post.id, title: post.title, views: views[post.id] ?? 0, likes: post.likes, comments: post.comments }))
-      .sort((a, b) => b.views - a.views || b.likes - a.likes || b.comments - a.comments)
-      .slice(0, 5);
+  const postKeys = await scanKeys("px:post:*");
+  const imgKeys = await scanKeys("img:*");
+  const [postBytes, imgBytes] = await Promise.all([totalBytes(postKeys), totalBytes(imgKeys)]);
 
-    const counts = {
-      total: all.length,
-      published: active.filter((post) => post.status === "published").length,
-      drafts: active.filter((post) => post.status === "draft").length,
-      trashed: trash.length,
-      comments: active.reduce((sum, post) => sum + post.comments, 0),
-      likes: active.reduce((sum, post) => sum + post.likes, 0),
-      views: Object.values(views).reduce((sum, count) => sum + count, 0),
-      images: images.length
-    };
-    const bytes = { posts: postBytes, images: imageBytes, total: postBytes + imageBytes };
+  const top = active
+    .map((c, i) => ({
+      id: c.id, title: c.title, views: views[i] || 0,
+      likes: likes[i] || 0, comments: comments[i] || 0,
+      score: (views[i] || 0) + (likes[i] || 0) * 6 + (comments[i] || 0) * 10
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
 
-    return NextResponse.json({ counts, bytes, top });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Gagal membaca statistik." }, { status: 500 });
-  }
+  return NextResponse.json({
+    counts: {
+      total: cards.length,
+      published: active.filter((c) => c.status === "published").length,
+      drafts: active.filter((c) => c.status === "draft").length,
+      trashed: trashed.length,
+      comments: comments.reduce((a, b) => a + b, 0),
+      likes: likes.reduce((a, b) => a + b, 0),
+      views: views.reduce((a, b) => a + b, 0),
+      images: imgKeys.length
+    },
+    bytes: { posts: postBytes, images: imgBytes, total: postBytes + imgBytes },
+    top
+  });
 }

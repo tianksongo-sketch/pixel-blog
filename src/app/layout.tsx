@@ -11,7 +11,6 @@ import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Alive } from "@/components/Alive";
 import { CommandPalette } from "@/components/CommandPalette";
-import { GlassLayer } from "@/components/GlassLayer";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +76,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Providers initial={{ seed, mode, consent, name, hasVid }}>
-          <GlassLayer />
           <PageShell>{children}</PageShell>
           <Footer />
           <BottomNav />
