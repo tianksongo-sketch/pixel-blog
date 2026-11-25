@@ -9,7 +9,27 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
   const [q, setQ] = useState("");
   const [label, setLabel] = useState<string | null>(initialLabel ?? null);
   const [sort, setSort] = useState<"new" | "top">("new");
+  const [remoteSearch, setRemoteSearch] = useState<{ query: string; ids: string[] } | null>(null);
+  const [searchingBody, setSearchingBody] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const query = q.trim().toLowerCase();
+    if (query.length < 2) { setSearchingBody(false); return; }
+    setSearchingBody(true);
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (active && response.ok && Array.isArray(data.items)) {
+          setRemoteSearch({ query, ids: data.items.map((item: { id?: unknown }) => String(item.id ?? "")) });
+        }
+      } catch { /* pencarian judul dan ringkasan tetap tersedia */ }
+      finally { if (active) setSearchingBody(false); }
+    }, 260);
+    return () => { active = false; clearTimeout(timer); };
+  }, [q]);
 
   useEffect(() => {
     const focus = () => {
@@ -31,10 +51,11 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
     const out = posts.filter((p) => {
       if (label && !p.labels.some((l) => l.toLowerCase() === label.toLowerCase())) return false;
       if (!needle) return true;
+      if (needle.length >= 2 && remoteSearch?.query === needle) return remoteSearch.ids.includes(p.id);
       return (p.title + " " + p.excerpt + " " + p.labels.join(" ")).toLowerCase().includes(needle);
     });
     return [...out].sort((a, b) => sort === "top" ? b.likes - a.likes || b.createdAt - a.createdAt : b.createdAt - a.createdAt);
-  }, [posts, q, label, sort]);
+  }, [posts, q, label, sort, remoteSearch]);
 
   const filtered = !!q.trim() || !!label;
 
@@ -72,6 +93,7 @@ export function FeedView({ posts, initialLabel }: { posts: PostWithStats[]; init
 
       <div className="section-head">
         <h2>{filtered ? "Hasil" : sort === "top" ? "Paling disukai" : "Tulisan terbaru"}</h2>
+        <span className="search-hint" aria-live="polite">{searchingBody ? "Mencari seluruh isi…" : ""}</span>
         <span className="count">{shown.length}</span>
       </div>
 

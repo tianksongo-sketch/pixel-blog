@@ -496,10 +496,21 @@ button { font: inherit; color: inherit; }
 .undo-bar { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 18px; border-radius: var(--shape-full); background: var(--md-error-container); color: var(--md-on-error-container); font-size: 14px; font-weight: 600; margin-bottom: 14px; }
 .undo-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .undo-bar .btn { color: inherit; min-height: 36px; }
-.stat-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
-.stat-box { background: var(--md-surface-container-low); border-radius: var(--shape-l-inc); padding: 16px 18px; }
+.stat-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+.stat-box { position: relative; overflow: hidden; background: linear-gradient(135deg, var(--md-surface-container-low), color-mix(in srgb, var(--md-primary-container) 24%, var(--md-surface-container-low))); border: 1px solid color-mix(in srgb, var(--md-primary) 12%, transparent); border-radius: var(--shape-l-inc); padding: 16px 18px; transition: transform var(--dur-std) var(--ease-emph), box-shadow var(--dur-std); }
+.stat-box:nth-child(2) { background: linear-gradient(135deg, var(--md-surface-container-low), color-mix(in srgb, var(--md-tertiary-container) 30%, var(--md-surface-container-low))); border-color: color-mix(in srgb, var(--md-tertiary) 16%, transparent); }
+.stat-box:nth-child(3) { background: linear-gradient(135deg, var(--md-surface-container-low), color-mix(in srgb, var(--md-secondary-container) 28%, var(--md-surface-container-low))); border-color: color-mix(in srgb, var(--md-secondary) 16%, transparent); }
+.stat-box:hover { transform: translateY(-2px); box-shadow: var(--elev-1); }
 .stat-box b { display: block; font-size: 28px; font-weight: 700; letter-spacing: -.8px; }
 .stat-box span { font-size: 12px; letter-spacing: .4px; color: var(--md-on-surface-variant); display: inline-flex; align-items: center; gap: 6px; }
+.stat-box span .ms { color: var(--md-primary); }
+.stat-box:nth-child(2) span .ms { color: var(--md-tertiary); }
+.stat-box:nth-child(3) span .ms { color: var(--md-secondary); }
+.search-hint { min-height: 1em; margin-left: auto; color: var(--md-on-surface-variant); font-size: 12px; font-weight: 500; }
+.bulk-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; margin: 0 0 12px; border-radius: var(--shape-l-inc); background: var(--md-surface-container); }
+.bulk-toolbar .btn { min-height: 36px; padding-inline: 12px; font-size: 12px; }
+.bulk-count { margin-inline: auto 4px; color: var(--md-on-surface-variant); font-size: 13px; font-weight: 700; }
+.admin-select { width: 20px; height: 20px; flex: none; accent-color: var(--md-primary); cursor: pointer; }
 .admin-top { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .admin-top h2 { flex: 1; font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 .admin-list { display: flex; flex-direction: column; gap: 12px; }
@@ -517,7 +528,7 @@ button { font: inherit; color: inherit; }
 .admin-cm { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .admin-cm-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .photo-pick { width: 100%; border: 2px dashed var(--md-outline); border-radius: var(--shape-l-inc); background: var(--md-surface-container); min-height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; color: var(--md-on-surface-variant); font-weight: 600; font-size: 14px; position: relative; overflow: hidden; margin-bottom: 16px; }
-@media (max-width: 560px) { .admin-row { flex-wrap: wrap; } .admin-info { flex: 1 1 100%; order: 3; } .stat-strip { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .admin-row { flex-wrap: wrap; } .admin-info { flex: 1 1 100%; order: 3; } .stat-strip { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; } .stat-box { padding: 12px; } .stat-box b { font-size: 22px; } .bulk-count { margin-left: 0; } }
 
 /* ---------- Empty, 404, footer ---------- */
 .empty { text-align: center; padding: 72px 20px; color: var(--md-on-surface-variant); }

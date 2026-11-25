@@ -10,7 +10,7 @@ import { attachRipple, Avatar, Btn, Dialog, Icon, LabelChip, Sheet, Skel, Switch
 import { RichEditor } from "./RichEditor";
 import { useApp } from "./Providers";
 
-type AdminPost = PostCard & { likes: number; comments: number; commentsList: Comment[] };
+type AdminPost = PostCard & { likes: number; comments: number; views: number; commentsList: Comment[] };
 type TrashPost = PostCard & { likes: number; comments: number };
 type Sess = { demo: boolean; needsSetup: boolean; authed: boolean };
 type Diag = { demo: boolean; indeks: number; zset: number; ditemukan: number; terbaca: number; sampah: number; perluPerbaiki: boolean };
@@ -34,7 +34,7 @@ async function aj(url: string, method = "GET", body?: unknown) {
   }
 }
 
-const asAdminPost = (p: PostCard): AdminPost => ({ ...p, likes: 0, comments: 0, commentsList: [] });
+const asAdminPost = (p: PostCard): AdminPost => ({ ...p, likes: 0, comments: 0, views: 0, commentsList: [] });
 const draftKey = (id: string | null) => `px:draft:${id ?? "new"}`;
 
 function readDraft(id: string | null): LocalDraft | null {
@@ -56,6 +56,9 @@ export function AdminApp() {
   const [loading, setLoading] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [tab, setTab] = useState<"all" | "published" | "draft" | "trash">("all");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmBulkTrash, setConfirmBulkTrash] = useState(false);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"new" | "top">("new");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -127,7 +130,8 @@ export function AdminApp() {
   const totals = useMemo(() => ({
     posts: posts.length,
     likes: posts.reduce((a, p) => a + p.likes, 0),
-    comments: posts.reduce((a, p) => a + p.comments, 0)
+    comments: posts.reduce((a, p) => a + p.comments, 0),
+    views: posts.reduce((a, p) => a + p.views, 0)
   }), [posts]);
 
   const needle = q.trim().toLowerCase();
@@ -141,6 +145,35 @@ export function AdminApp() {
   [posts, tab, matches, sort]);
 
   const shownTrash = useMemo(() => trash.filter(matches), [trash, matches]);
+  const allShownSelected = shown.length > 0 && shown.every((p) => selected.has(p.id));
+
+  const toggleVisibleSelection = () => setSelected((prev) => {
+    const next = new Set(prev);
+    if (allShownSelected) shown.forEach((p) => next.delete(p.id));
+    else shown.forEach((p) => next.add(p.id));
+    return next;
+  });
+
+  const runBulk = async (action: "publish" | "draft" | "trash") => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    setConfirmBulkTrash(false);
+    let completed = 0;
+    let failed = 0;
+    for (let i = 0; i < ids.length; i += 50) {
+      const r = await aj("/api/admin/bulk", "POST", { ids: ids.slice(i, i + 50), action });
+      if (r.ok) {
+        completed += Number(r.j.completed) || 0;
+        failed += Number(r.j.failed) || 0;
+      } else failed += Math.min(50, ids.length - i);
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    snack(`${completed} postingan ${action === "trash" ? "dipindahkan ke sampah" : action === "publish" ? "dipublikasikan" : "disimpan sebagai draf"}`);
+    if (failed) snack(`${failed} postingan gagal diperbarui`);
+    await load(true);
+  };
 
   const repair = async () => {
     setRepairing(true);
@@ -281,6 +314,7 @@ export function AdminApp() {
             <div className="stat-box"><b>{totals.posts}</b><span><Icon name="article" size={14} />Postingan</span></div>
             <div className="stat-box"><b>{totals.likes}</b><span><Icon name="favorite" size={14} />Suka</span></div>
             <div className="stat-box"><b>{totals.comments}</b><span><Icon name="chat_bubble" size={14} />Komentar</span></div>
+            <div className="stat-box"><b>{totals.views}</b><span><Icon name="visibility" size={14} />Dibaca</span></div>
           </div>
 
           <div className="feed-tools">
@@ -314,6 +348,21 @@ export function AdminApp() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {tab !== "trash" && shown.length > 0 && (
+            <div className="bulk-toolbar">
+              <button className="btn b-outlined" disabled={bulkBusy} onPointerDown={attachRipple} onClick={toggleVisibleSelection}>
+                <Icon name={allShownSelected ? "deselect" : "select_all"} size={18} />
+                {allShownSelected ? "Batalkan pilihan" : "Pilih semua yang tampil"}
+              </button>
+              {selected.size > 0 && <>
+                <span className="bulk-count">{selected.size} dipilih</span>
+                <Btn variant="tonal" disabled={bulkBusy} onClick={() => void runBulk("publish")}><Icon name="publish" size={18} />Terbitkan</Btn>
+                <Btn variant="tonal" disabled={bulkBusy} onClick={() => void runBulk("draft")}><Icon name="draft" size={18} />Jadikan draf</Btn>
+                <Btn variant="text" className="b-danger" disabled={bulkBusy} onClick={() => setConfirmBulkTrash(true)}><Icon name="delete" size={18} />Sampah</Btn>
+              </>}
+            </div>
+          )}
 
           {loading ? (
             <div className="admin-list"><Skel h={88} r={24} /><Skel h={88} r={24} /><Skel h={88} r={24} /></div>
@@ -369,6 +418,12 @@ export function AdminApp() {
                     initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.97 }} transition={SPRING_SOFT}>
                     <div className="admin-row">
+                      <input className="admin-select" type="checkbox" checked={selected.has(p.id)}
+                        aria-label={`Pilih ${p.title}`} disabled={bulkBusy} onChange={() => setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                          return next;
+                        })} />
                       {p.hasCover
                         ? <img className="thumb" src={`/api/img/${p.id}?v=${p.ver}`} alt="" loading="lazy" decoding="async" />
                         : <span className="thumb-fallback"><Icon name="article" size={24} /></span>}
@@ -382,6 +437,7 @@ export function AdminApp() {
                           <span suppressHydrationWarning>{formatDate(p.createdAt)}</span>
                           <span className="admin-stat"><Icon name="favorite" size={15} />{p.likes}</span>
                           <span className="admin-stat"><Icon name="chat_bubble" size={15} />{p.comments}</span>
+                          <span className="admin-stat"><Icon name="visibility" size={15} />{p.views}</span>
                           {p.link && <a className="link" href={p.link} target="_blank" rel="noopener noreferrer nofollow">{hostOf(p.link)}</a>}
                         </div>
                       </div>
@@ -440,6 +496,13 @@ export function AdminApp() {
         actions={<>
           <Btn variant="text" onClick={() => setConfirmPurge(null)}>Batal</Btn>
           <Btn variant="filled" style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={() => void doPurge()}>Hapus permanen</Btn>
+        </>} />
+
+      <Dialog open={confirmBulkTrash} onClose={() => setConfirmBulkTrash(false)} icon="delete" title="Pindahkan pilihan ke sampah?"
+        text={`${selected.size} postingan akan disembunyikan dari blog. Kamu bisa mengembalikannya dari tab Sampah.`}
+        actions={<>
+          <Btn variant="text" onClick={() => setConfirmBulkTrash(false)}>Batal</Btn>
+          <Btn variant="filled" disabled={bulkBusy} style={{ background: "var(--md-error)", color: "var(--md-on-error)" }} onClick={() => void runBulk("trash")}>Pindahkan ke sampah</Btn>
         </>} />
     </main>
   );
