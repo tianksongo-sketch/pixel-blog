@@ -12,8 +12,6 @@ const NEXT: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
 const ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
 const LABEL: Record<Mode, string> = { auto: "Auto", light: "Light", dark: "Dark" };
 
-const HERO_H = 96;
-
 const stealth: CSSProperties = {
   background: "none", border: 0, padding: 0, margin: 0,
   font: "inherit", color: "inherit", letterSpacing: "inherit",
@@ -21,30 +19,39 @@ const stealth: CSSProperties = {
   userSelect: "none", WebkitTapHighlightColor: "transparent"
 };
 
+/* Header sticky tinggi KONSTAN. Latar blur & judul kecil hanya toggle class
+   sekali saat melewati ambang scroll — tanpa penulisan layout per frame,
+   jadi tidak ada flicker. */
 const BAR_CSS = `
 .ab2{position:sticky;top:0;z-index:40;padding-top:var(--safe-t,0px)}
+.ab2-row{position:relative;display:flex;align-items:center;gap:6px;height:60px}
 .ab2-bg{
   position:absolute;inset:0;pointer-events:none;
-  background-color:color-mix(in srgb,var(--canvas,#000) 88%,transparent);
+  background-color:color-mix(in srgb,var(--canvas,#000) 90%,transparent);
   background-image:linear-gradient(180deg,var(--g-fill-2,rgba(255,255,255,.1)),transparent);
   backdrop-filter:blur(26px) saturate(150%) brightness(1.05);
   -webkit-backdrop-filter:blur(26px) saturate(150%) brightness(1.05);
   border-bottom:1px solid var(--g-line,rgba(255,255,255,.14));
   box-shadow:inset 0 1px 0 var(--g-top,rgba(255,255,255,.5)),0 12px 32px rgba(0,0,0,.38);
-  opacity:var(--ab-p,0);
-  transition:opacity .35s cubic-bezier(.16,1,.3,1);
+  opacity:0;visibility:hidden;
+  transition:opacity .32s cubic-bezier(.16,1,.3,1),visibility 0s linear .32s;
+}
+.ab2.is-scrolled .ab2-bg,
+.ab2-solid .ab2-bg{
+  opacity:1;visibility:visible;
+  transition:opacity .32s cubic-bezier(.16,1,.3,1);
 }
 @supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
   .ab2-bg{background-color:var(--canvas,#000)}
 }
-.ab2-row{position:relative;display:flex;align-items:center;gap:6px;height:60px}
 .ab2-title{
   font-family:var(--font-ui,inherit);font-weight:800;text-transform:uppercase;
   letter-spacing:.1em;font-size:12.5px;color:var(--ink,#fff);
-  opacity:var(--ab-p,0);transform:translateY(calc((1 - var(--ab-p,0)) * 8px));
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
+  opacity:0;transform:translateY(8px);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:opacity .32s cubic-bezier(.16,1,.3,1),transform .32s cubic-bezier(.16,1,.3,1);
 }
-.ab2-solid .ab2-bg{opacity:1}
+.ab2.is-scrolled .ab2-title,
 .ab2-solid .ab2-title{opacity:1;transform:none}
 .ab2-actions{margin-left:auto;display:flex;align-items:center;gap:2px;flex:none}
 .ab2-actions .btn.b-icon{
@@ -52,7 +59,9 @@ const BAR_CSS = `
   color:var(--g-dim,rgba(255,255,255,.66));background:transparent;
 }
 .ab2-actions .btn.b-icon:hover{color:var(--ink,#fff);background:var(--g-fill-2,rgba(255,255,255,.1))}
-.ab2-hero{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding-bottom:16px}
+
+/* Hero kini konten aliran biasa: ikut ter-scroll, tidak mengubah tinggi header. */
+.ab2-hero{position:relative;padding:14px 0 20px}
 .ab2-hero h1{
   font-family:var(--font-display,"Anton",sans-serif);font-weight:400;text-transform:uppercase;
   font-size:clamp(38px,9vw,72px);line-height:.92;letter-spacing:.005em;color:var(--ink,#fff);
@@ -147,34 +156,30 @@ function MonoClock() {
 
 export function TopAppBar({ title, large = false, back = false }: { title: string; large?: boolean; back?: boolean }) {
   const ref = useRef<HTMLElement>(null);
-  const heroRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const scrolled = useRef(false);
   const { mode, setMode, adminUi, registerAdminTap, lockAdminUi } = useApp();
   const lp = useRef<number | null>(null);
   const fired = useRef(false);
 
+  /* Hanya toggle class saat melewati ambang — satu kali, bukan tiap frame. */
   useEffect(() => {
     const el = ref.current;
-    const hero = heroRef.current;
     if (!el) return;
-    if (!large || !hero) { el.style.setProperty("--ab-p", "1"); return; }
+    if (!large) { el.classList.add("is-scrolled"); return; }
     let raf = 0;
     const update = () => {
       raf = 0;
-      const p = Math.min(1, window.scrollY / 88);
-      el.style.setProperty("--ab-p", String(p));
-      hero.style.height = `${Math.max(0, HERO_H * (1 - p))}px`;
-      hero.style.opacity = String(Math.max(0, 1 - p * 1.15));
+      const on = window.scrollY > 24;
+      if (on !== scrolled.current) {
+        scrolled.current = on;
+        el.classList.toggle("is-scrolled", on);
+      }
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
+    return () => { window.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
   }, [large]);
 
   useEffect(() => () => { if (lp.current) clearTimeout(lp.current); }, []);
@@ -215,16 +220,16 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
             </button>
           </div>
         </div>
-        {large && (
-          <div className="ab2-hero container" ref={heroRef} style={{ height: HERO_H }}>
-            <h1>
-              <button type="button" onClick={() => registerAdminTap("brand")} aria-label={title} tabIndex={-1}>
-                {title}
-              </button>
-            </h1>
-          </div>
-        )}
       </header>
+      {large && (
+        <div className="ab2-hero container">
+          <h1>
+            <button type="button" onClick={() => registerAdminTap("brand")} aria-label={title} tabIndex={-1}>
+              {title}
+            </button>
+          </h1>
+        </div>
+      )}
     </>
   );
 }
@@ -240,7 +245,7 @@ export function Glance() {
     line = `${greet} · ${now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`;
   }
   return (
-    <section className="glance" style={{ paddingTop: 18 }}>
+    <section className="glance" style={{ paddingTop: 4 }}>
       <h2>
         <button type="button" style={stealth} onClick={() => registerAdminTap("glance")} aria-label="Sekilas">
           Sekilas
