@@ -164,8 +164,8 @@ export function AdminApp() {
     for (let i = 0; i < ids.length; i += 50) {
       const r = await aj("/api/admin/bulk", "POST", { ids: ids.slice(i, i + 50), action });
       if (r.ok) {
-        completed += Number(r.j.completed) || 0;
-        failed += Number(r.j.failed) || 0;
+        completed += Number(r.j.changed ?? r.j.completed) || 0;
+        failed += Number(r.j.failed ?? r.j.missing?.length) || 0;
       } else failed += Math.min(50, ids.length - i);
     }
     setBulkBusy(false);
