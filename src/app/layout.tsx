@@ -51,15 +51,13 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
-/* Ikon hanya ditampilkan setelah font Material Symbols benar-benar termuat,
-   supaya tidak pernah terlihat sebagai kata-kata mentah saat font gagal. */
+/* Ikon disembunyikan hanya sampai font ikon selesai dimuat, lalu DIPAKSA muncul
+   maksimal 1,5 detik — supaya tombol tidak pernah kosong permanen. */
 const ICONS_SCRIPT = `(function(){
-  var d=document,n=0;
-  function ok(){try{return !!(d.fonts&&d.fonts.check('16px "Material Symbols Rounded"'))}catch(e){return false}}
+  var d=document;
   function on(){d.documentElement.classList.add('icons-on')}
-  if(ok()){on();return}
-  var t=setInterval(function(){n++;if(ok()){on();clearInterval(t)}else if(n>40){clearInterval(t)}},250);
-  if(d.fonts&&d.fonts.ready){d.fonts.ready.then(function(){if(ok())on()})}
+  if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function'){d.fonts.ready.then(on)}
+  setTimeout(on,1500);
 })();`;
 
 const A11Y_CSS = `
