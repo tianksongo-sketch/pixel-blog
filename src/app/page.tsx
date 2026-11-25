@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { getFeed } from "@/lib/db";
 import { Glance, TopAppBar } from "@/components/TopAppBar";
 import { FeedView } from "@/components/FeedView";
+import { HeroStats } from "@/components/HeroStats";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ l
       <TopAppBar title="F4KUYY" large />
       <main className="container page">
         <Glance />
+        <HeroStats />
         <FeedView posts={posts} initialLabel={initialLabel} />
       </main>
     </>

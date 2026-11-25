@@ -2,16 +2,17 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { randomSeed, type Mode } from "@/lib/theme";
+import { type Mode } from "@/lib/theme";
+import { haptic, tick } from "@/lib/motion";
 import { attachRipple, Icon } from "./ui";
 import { useApp } from "./Providers";
+import { GlassClock } from "./GlassClock";
 
-const NEXT_MODE: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
-const MODE_ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
-const MODE_LABEL: Record<Mode, string> = { auto: "Otomatis", light: "Terang", dark: "Gelap" };
+const NEXT: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
+const ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
+const LABEL: Record<Mode, string> = { auto: "Auto", light: "Light", dark: "Dark" };
 
-/* Tanpa ripple, tanpa scale, tanpa cursor pointer: tidak terlihat seperti tombol. */
-const stealthTap: CSSProperties = {
+const stealth: CSSProperties = {
   background: "none", border: 0, padding: 0, margin: 0,
   font: "inherit", color: "inherit", letterSpacing: "inherit",
   textAlign: "left", cursor: "default", display: "block", width: "100%",
@@ -21,43 +22,33 @@ const stealthTap: CSSProperties = {
 export function TopAppBar({ title, large = false, back = false }: { title: string; large?: boolean; back?: boolean }) {
   const ref = useRef<HTMLElement>(null);
   const router = useRouter();
-  const { seed, mode, setMode, setTheme, adminUi, registerAdminTap, lockAdminUi } = useApp();
-  const lpTimer = useRef<number | null>(null);
-  const lpFired = useRef(false);
+  const { mode, setMode, adminUi, registerAdminTap, lockAdminUi } = useApp();
+  const lp = useRef<number | null>(null);
+  const fired = useRef(false);
+  const [hasClock, setHasClock] = useState(false);
+
+  useEffect(() => {
+    /* GlassClock hanya ada bila kamu sudah memasangnya dari versi sebelumnya. */
+    setHasClock(typeof GlassClock === "function");
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (!large) { el.style.setProperty("--ab-p", "1"); return; }
     let raf = 0;
-    const update = () => {
-      raf = 0;
-      const progress = Math.min(1, window.scrollY / 76);
-      el.style.setProperty("--ab-p", String(progress));
-      el.style.setProperty("--ab-hero-height", `${88 * (1 - progress)}px`);
-    };
+    const update = () => { raf = 0; el.style.setProperty("--ab-p", String(Math.min(1, window.scrollY / 88))); };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => { window.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
   }, [large]);
 
-  useEffect(() => () => { if (lpTimer.current) clearTimeout(lpTimer.current); }, []);
+  useEffect(() => () => { if (lp.current) clearTimeout(lp.current); }, []);
 
-  const shuffle = (el: HTMLElement) => {
-    const r = el.getBoundingClientRect();
-    setTheme(randomSeed(seed), { x: r.left + r.width / 2, y: r.top + r.height / 2 });
-  };
-
-  const pencilDown = () => {
-    lpFired.current = false;
-    lpTimer.current = window.setTimeout(() => { lpFired.current = true; lockAdminUi(); }, 650);
-  };
-  const pencilUp = () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } };
-  const pencilClick = () => {
-    if (lpFired.current) { lpFired.current = false; return; }
-    router.push("/admin");
-  };
+  const down = () => { fired.current = false; lp.current = window.setTimeout(() => { fired.current = true; lockAdminUi(); }, 650); };
+  const up = () => { if (lp.current) { clearTimeout(lp.current); lp.current = null; } };
+  const clickPencil = () => { if (fired.current) { fired.current = false; return; } haptic(10); router.push("/admin"); };
 
   return (
     <>
@@ -75,39 +66,37 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           )}
           <span className="appbar-title-sm">{title}</span>
           <div className="appbar-actions">
+            {hasClock && <GlassClock variant="compact" />}
             {adminUi && (
-              <button
-                className="btn b-icon"
-                aria-label="Buka panel admin"
-                title="Buka panel admin · tekan lama untuk keluar"
-                onPointerDown={(e) => { attachRipple(e); pencilDown(); }}
-                onPointerUp={pencilUp} onPointerLeave={pencilUp} onPointerCancel={pencilUp}
-                onClick={pencilClick}
-              >
-                <Icon name="edit" size={24} />
+              <button className="btn b-icon" aria-label="Buka panel admin" title="Panel admin · tekan lama untuk keluar"
+                onPointerDown={(e) => { attachRipple(e); down(); }}
+                onPointerUp={up} onPointerLeave={up} onPointerCancel={up} onClick={clickPencil}>
+                <Icon name="edit" size={22} />
               </button>
             )}
-            <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setMode(NEXT_MODE[mode])}
-              aria-label={`Mode tampilan: ${MODE_LABEL[mode]}. Ketuk untuk ganti.`} title={MODE_LABEL[mode]}>
-              <Icon name={MODE_ICON[mode]} size={24} />
+            <button className="btn b-icon" onPointerDown={attachRipple}
+              onClick={() => { setMode(NEXT[mode]); haptic(8); tick(640); }}
+              aria-label={`Tema: ${LABEL[mode]}`} title={LABEL[mode]}>
+              <Icon name={ICON[mode]} size={22} />
             </button>
-            <button className="btn b-icon" onPointerDown={attachRipple} onClick={(e) => shuffle(e.currentTarget)}
-              aria-label="Acak warna tema" title="Acak warna">
-              <Icon name="palette" size={24} />
+            <button className="btn b-icon" onPointerDown={attachRipple}
+              onClick={() => { window.dispatchEvent(new Event("px:open-settings")); tick(560); }}
+              aria-label="Pengaturan tampilan" title="Pengaturan">
+              <Icon name="tune" size={22} />
             </button>
           </div>
         </div>
         {large && (
-          <div className="appbar-hero container">
+          <div className="appbar-hero container" style={{ height: "auto", minHeight: 96, paddingBottom: 18 }}>
             <h1 className="appbar-title-lg">
-              <button type="button" style={stealthTap} onClick={() => registerAdminTap("brand")} aria-label={title}>
+              <button type="button" style={stealth} onClick={() => registerAdminTap("brand")} aria-label={title}>
                 {title}
               </button>
             </h1>
           </div>
         )}
       </header>
-      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} />
+      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} style={large ? { height: "calc(184px + var(--safe-t))" } : undefined} />
     </>
   );
 }
@@ -125,7 +114,7 @@ export function Glance() {
   return (
     <section className="glance">
       <h2>
-        <button type="button" style={stealthTap} onClick={() => registerAdminTap("glance")} aria-label="At a glance">
+        <button type="button" style={stealth} onClick={() => registerAdminTap("glance")} aria-label="At a glance">
           At a glance
         </button>
       </h2>

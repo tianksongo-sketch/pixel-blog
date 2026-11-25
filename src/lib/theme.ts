@@ -1,80 +1,69 @@
-import { argbFromHex, hexFromArgb, themeFromSourceColor } from "@material/material-color-utilities";
-
-export const SEEDS = [
-  "#4285F4", "#EA4335", "#FBBC04", "#34A853", "#A142F4", "#24C1E0", "#FA7B17",
-  "#FF8BCB", "#8AB4F8", "#81C995", "#F28B82", "#C58AF9", "#FDE293", "#5E97F6"
-];
+/* ==========================================================================
+   MONOKROM. Tidak ada seed, tidak ada palet, tidak ada acak warna.
+   Nama export lama dipertahankan supaya Providers/CommandPalette tetap jalan.
+   ========================================================================== */
 
 export type Mode = "auto" | "light" | "dark";
 export type Vars = Record<string, string>;
 
+/* CATATAN: SEEDS sengaja satu nilai netral. UI pemilih warna sudah dihapus. */
+export const SEEDS = ["#FFFFFF"];
+
 export function isSeed(s?: string | null): s is string {
-  return !!s && SEEDS.includes(s.toUpperCase());
+  return typeof s === "string" && s.length > 0;
 }
-export function randomSeed(exclude?: string): string {
-  const pool = SEEDS.filter((s) => s !== exclude);
-  return pool[Math.floor(Math.random() * pool.length)];
-}
+export function randomSeed(): string { return "mono"; }
 
-type Pal = { tone: (n: number) => number };
+const DARK: Vars = {
+  "primary": "#FFFFFF", "on-primary": "#000000",
+  "primary-container": "#1A1A1A", "on-primary-container": "#FFFFFF",
+  "secondary": "#D6D6D6", "on-secondary": "#000000",
+  "secondary-container": "#161616", "on-secondary-container": "#F2F2F2",
+  "tertiary": "#BDBDBD", "on-tertiary": "#000000",
+  "tertiary-container": "#121212", "on-tertiary-container": "#EDEDED",
+  "error": "#FFFFFF", "on-error": "#000000",
+  "error-container": "#1F1F1F", "on-error-container": "#FFFFFF",
+  "surface": "#000000", "on-surface": "#FFFFFF", "on-surface-variant": "#9A9A9A",
+  "surface-container-lowest": "#000000", "surface-container-low": "#0A0A0A",
+  "surface-container": "#101010", "surface-container-high": "#161616",
+  "surface-container-highest": "#1E1E1E",
+  "surface-dim": "#000000", "surface-bright": "#242424",
+  "outline": "#4A4A4A", "outline-variant": "#242424",
+  "inverse-surface": "#FFFFFF", "inverse-on-surface": "#000000",
+  "inverse-primary": "#000000", "surface-tint": "#FFFFFF",
+  "scrim": "#000000", "shadow": "#000000"
+};
 
-/** 26 peran warna M3 + add-on (fixed accent, surface dim/bright). */
-export function schemeVars(seed: string): { light: Vars; dark: Vars } {
-  const { palettes: p } = themeFromSourceColor(argbFromHex(seed));
-  const t = (pal: Pal, tone: number) => hexFromArgb(pal.tone(tone));
+const LIGHT: Vars = {
+  "primary": "#000000", "on-primary": "#FFFFFF",
+  "primary-container": "#EDEDED", "on-primary-container": "#000000",
+  "secondary": "#2B2B2B", "on-secondary": "#FFFFFF",
+  "secondary-container": "#F2F2F2", "on-secondary-container": "#0A0A0A",
+  "tertiary": "#454545", "on-tertiary": "#FFFFFF",
+  "tertiary-container": "#F6F6F6", "on-tertiary-container": "#141414",
+  "error": "#000000", "on-error": "#FFFFFF",
+  "error-container": "#E8E8E8", "on-error-container": "#000000",
+  "surface": "#FFFFFF", "on-surface": "#000000", "on-surface-variant": "#6A6A6A",
+  "surface-container-lowest": "#FFFFFF", "surface-container-low": "#FAFAFA",
+  "surface-container": "#F4F4F4", "surface-container-high": "#EDEDED",
+  "surface-container-highest": "#E4E4E4",
+  "surface-dim": "#DEDEDE", "surface-bright": "#FFFFFF",
+  "outline": "#B4B4B4", "outline-variant": "#E2E2E2",
+  "inverse-surface": "#000000", "inverse-on-surface": "#FFFFFF",
+  "inverse-primary": "#FFFFFF", "surface-tint": "#000000",
+  "scrim": "#000000", "shadow": "#000000"
+};
 
-  const accent = (pal: Pal, dark: boolean): Vars => {
-    const key = pal === p.primary ? "primary" : pal === p.secondary ? "secondary" : "tertiary";
-    return {
-      [key]: t(pal, dark ? 80 : 40),
-      [`on-${key}`]: t(pal, dark ? 20 : 100),
-      [`${key}-container`]: t(pal, dark ? 30 : 90),
-      [`on-${key}-container`]: t(pal, dark ? 90 : 30),
-      /* Fixed: nada tetap di terang & gelap */
-      [`${key}-fixed`]: t(pal, 90),
-      [`${key}-fixed-dim`]: t(pal, 80),
-      [`on-${key}-fixed`]: t(pal, 10),
-      [`on-${key}-fixed-variant`]: t(pal, 30)
-    };
-  };
-
-  const shared = (dark: boolean): Vars => ({
-    ...accent(p.primary, dark),
-    ...accent(p.secondary, dark),
-    ...accent(p.tertiary, dark),
-    "error": t(p.error, dark ? 80 : 40),
-    "on-error": t(p.error, dark ? 20 : 100),
-    "error-container": t(p.error, dark ? 30 : 90),
-    "on-error-container": t(p.error, dark ? 90 : 30),
-    "surface": t(p.neutral, dark ? 6 : 98),
-    "on-surface": t(p.neutral, dark ? 90 : 10),
-    "on-surface-variant": t(p.neutralVariant, dark ? 80 : 30),
-    "surface-container-lowest": t(p.neutral, dark ? 4 : 100),
-    "surface-container-low": t(p.neutral, dark ? 10 : 96),
-    "surface-container": t(p.neutral, dark ? 12 : 94),
-    "surface-container-high": t(p.neutral, dark ? 17 : 92),
-    "surface-container-highest": t(p.neutral, dark ? 22 : 90),
-    "surface-dim": t(p.neutral, dark ? 6 : 87),
-    "surface-bright": t(p.neutral, dark ? 24 : 98),
-    "outline": t(p.neutralVariant, dark ? 60 : 50),
-    "outline-variant": t(p.neutralVariant, dark ? 30 : 80),
-    "inverse-surface": t(p.neutral, dark ? 90 : 20),
-    "inverse-on-surface": t(p.neutral, dark ? 20 : 95),
-    "inverse-primary": t(p.primary, dark ? 40 : 80),
-    "surface-tint": t(p.primary, dark ? 80 : 40),
-    "scrim": "#000000",
-    "shadow": "#000000"
-  });
-
-  return { light: shared(false), dark: shared(true) };
+export function schemeVars(_seed?: string): { light: Vars; dark: Vars } {
+  return { light: { ...LIGHT }, dark: { ...DARK } };
 }
 
 export function varsToCss(v: Vars, important = false): string {
   return Object.entries(v).map(([k, val]) => `--md-${k}:${val}${important ? " !important" : ""}`).join(";");
 }
 
-export function themeCss(seed: string): string {
-  const { light, dark } = schemeVars(seed);
+export function themeCss(_seed?: string): string {
+  const { light, dark } = schemeVars();
   return [
     `:root{${varsToCss(light)};color-scheme:light}`,
     `@media (prefers-color-scheme: dark){:root:not([data-mode="light"]){${varsToCss(dark, true)};color-scheme:dark !important}}`,
@@ -82,15 +71,18 @@ export function themeCss(seed: string): string {
   ].join("\n");
 }
 
-export function updateThemeMetas(seed: string, mode: Mode): void {
+export function effectiveDark(mode: Mode): boolean {
+  if (typeof window === "undefined") return true;
+  return mode === "dark" || (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+}
+
+export function updateThemeMetas(_seed: string, mode: Mode): void {
   if (typeof document === "undefined") return;
-  const { light, dark } = schemeVars(seed);
-  const darkNow = mode === "dark" || (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const c = darkNow ? dark.surface : light.surface;
+  const c = effectiveDark(mode) ? "#000000" : "#FFFFFF";
   document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", c));
 }
 
-export function applyThemeDom(seed: string, mode: Mode): void {
+export function applyThemeDom(_seed: string, mode: Mode): void {
   if (typeof document === "undefined") return;
   let el = document.getElementById("px-theme") as HTMLStyleElement | null;
   if (!el) {
@@ -98,10 +90,9 @@ export function applyThemeDom(seed: string, mode: Mode): void {
     el.id = "px-theme";
     document.head.appendChild(el);
   }
-  el.textContent = themeCss(seed);
+  el.textContent = themeCss();
   const root = document.documentElement;
-  const { light } = schemeVars(seed);
-  Object.entries(light).forEach(([k, v]) => root.style.setProperty(`--md-${k}`, v));
+  Object.entries(LIGHT).forEach(([k, v]) => root.style.setProperty(`--md-${k}`, v));
   root.dataset.mode = mode;
-  updateThemeMetas(seed, mode);
+  updateThemeMetas("mono", mode);
 }
