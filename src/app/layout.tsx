@@ -2,24 +2,25 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import type { CSSProperties } from "react";
 import "./globals.css";
+import "./glass.css";
 import { isSeed, randomSeed, schemeVars, themeCss, type Mode } from "@/lib/theme";
 import { siteUrl } from "@/lib/utils";
+import { DEFAULT_GLASS, glassVars, normalize } from "@/lib/glass";
 import { Providers } from "@/components/Providers";
 import { Footer } from "@/components/Footer";
 import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
+import { GlassLayer } from "@/components/GlassLayer";
+import { GlassStudio } from "@/components/GlassStudio";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: { default: "F4KUYY", template: "%s · F4KUYY" },
-  description: "Catatan, cerita, dan hal-hal yang layak dibagikan — dibangun dengan Material 3 Expressive.",
+  description: "Catatan, cerita, dan hal-hal yang layak dibagikan — Liquid Glass di atas Material 3 Expressive.",
   icons: { icon: "/favicon.svg" },
-  alternates: {
-    canonical: "/",
-    types: { "application/rss+xml": "/feed.xml" }
-  },
+  alternates: { canonical: "/", types: { "application/rss+xml": "/feed.xml" } },
   openGraph: { siteName: "F4KUYY", locale: "id_ID", type: "website" },
   robots: { index: true, follow: true }
 };
@@ -30,9 +31,7 @@ export async function generateViewport(): Promise<Viewport> {
   const seed = isSeed(raw) ? raw.toUpperCase() : randomSeed();
   const v = schemeVars(seed);
   return {
-    width: "device-width",
-    initialScale: 1,
-    viewportFit: "cover",
+    width: "device-width", initialScale: 1, viewportFit: "cover",
     themeColor: [
       { media: "(prefers-color-scheme: light)", color: v.light.surface },
       { media: "(prefers-color-scheme: dark)", color: v.dark.surface }
@@ -49,16 +48,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const consent = c.get("px_consent")?.value ?? null;
   const name = c.get("px_name")?.value ?? null;
   const hasVid = !!c.get("px_vid")?.value;
+
+  let glass = DEFAULT_GLASS;
+  const rawGlass = c.get("px_glass")?.value;
+  if (rawGlass) { try { glass = normalize(JSON.parse(decodeURIComponent(rawGlass))); } catch { glass = DEFAULT_GLASS; } }
+
   const { light } = schemeVars(seed);
-  const style = Object.fromEntries(Object.entries(light).map(([k, v]) => [`--md-${k}`, v])) as CSSProperties;
+  const style = {
+    ...Object.fromEntries(Object.entries(light).map(([k, v]) => [`--md-${k}`, v])),
+    ...glassVars(glass)
+  } as CSSProperties;
 
   const base = siteUrl();
   const siteLd = {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: "F4KUYY",
-    url: base,
-    inLanguage: "id-ID",
+    "@context": "https://schema.org", "@type": "WebSite",
+    name: "F4KUYY", url: base, inLanguage: "id-ID",
     potentialAction: {
       "@type": "SearchAction",
       target: { "@type": "EntryPoint", urlTemplate: `${base}/?q={search_term_string}` },
@@ -67,7 +71,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   };
 
   return (
-    <html lang="id" data-mode={mode} style={style}>
+    <html lang="id" data-mode={mode} data-glass={glass.on ? "on" : "off"} data-glass-tone={glass.tone} style={style}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -80,10 +84,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteLd) }} />
       </head>
       <body>
+        <GlassLayer />
         <Providers initial={{ seed, mode, consent, name, hasVid }}>
           <PageShell>{children}</PageShell>
           <Footer />
           <BottomNav />
+          <GlassStudio />
         </Providers>
       </body>
     </html>
