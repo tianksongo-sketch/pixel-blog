@@ -1,2 +1,2 @@
-export const BUILD = "added new liquid glass ui";
-export const BUILD_LABEL = "v 8.0.3";
+export const BUILD = "fix-v10";
+export const BUILD_LABEL = "v 10.0.0";

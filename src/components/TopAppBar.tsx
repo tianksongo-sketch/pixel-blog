@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { randomSeed, type Mode } from "@/lib/theme";
 import { attachRipple, Icon } from "./ui";
 import { useApp } from "./Providers";
-import { GlassClock } from "./GlassClock";
 
 const NEXT_MODE: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
 const MODE_ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
 const MODE_LABEL: Record<Mode, string> = { auto: "Otomatis", light: "Terang", dark: "Gelap" };
 
+/* Tanpa ripple, tanpa scale, tanpa cursor pointer: tidak terlihat seperti tombol. */
 const stealthTap: CSSProperties = {
   background: "none", border: 0, padding: 0, margin: 0,
   font: "inherit", color: "inherit", letterSpacing: "inherit",
@@ -49,12 +49,15 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
     lpTimer.current = window.setTimeout(() => { lpFired.current = true; lockAdminUi(); }, 650);
   };
   const pencilUp = () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } };
-  const pencilClick = () => { if (lpFired.current) { lpFired.current = false; return; } router.push("/admin"); };
+  const pencilClick = () => {
+    if (lpFired.current) { lpFired.current = false; return; }
+    router.push("/admin");
+  };
 
   return (
     <>
       <header ref={ref} className={`appbar${large ? "" : " appbar-solid"}`}>
-        <div className="appbar-bg gl-sheen" />
+        <div className="appbar-bg" />
         <div className="appbar-row container">
           {back ? (
             <Link href="/" prefetch className="btn b-icon" aria-label="Kembali" onPointerDown={attachRipple}>
@@ -67,18 +70,20 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           )}
           <span className="appbar-title-sm">{title}</span>
           <div className="appbar-actions">
-            <GlassClock variant="compact" />
             {adminUi && (
-              <button className="btn b-icon" aria-label="Buka panel admin"
+              <button
+                className="btn b-icon"
+                aria-label="Buka panel admin"
                 title="Buka panel admin · tekan lama untuk keluar"
                 onPointerDown={(e) => { attachRipple(e); pencilDown(); }}
                 onPointerUp={pencilUp} onPointerLeave={pencilUp} onPointerCancel={pencilUp}
-                onClick={pencilClick}>
+                onClick={pencilClick}
+              >
                 <Icon name="edit" size={24} />
               </button>
             )}
             <button className="btn b-icon" onPointerDown={attachRipple} onClick={() => setMode(NEXT_MODE[mode])}
-              aria-label={`Mode tampilan: ${MODE_LABEL[mode]}`} title={MODE_LABEL[mode]}>
+              aria-label={`Mode tampilan: ${MODE_LABEL[mode]}. Ketuk untuk ganti.`} title={MODE_LABEL[mode]}>
               <Icon name={MODE_ICON[mode]} size={24} />
             </button>
             <button className="btn b-icon" onPointerDown={attachRipple} onClick={(e) => shuffle(e.currentTarget)}
@@ -88,17 +93,16 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           </div>
         </div>
         {large && (
-          <div className="appbar-hero container" style={{ height: "auto", minHeight: 88, paddingBottom: 14, gap: 18, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-            <h1 className="appbar-title-lg" style={{ flex: "1 1 220px", minWidth: 0 }}>
+          <div className="appbar-hero container">
+            <h1 className="appbar-title-lg">
               <button type="button" style={stealthTap} onClick={() => registerAdminTap("brand")} aria-label={title}>
                 {title}
               </button>
             </h1>
-            <GlassClock variant="hero" />
           </div>
         )}
       </header>
-      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} style={large ? { height: "calc(178px + var(--safe-t))" } : undefined} />
+      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} />
     </>
   );
 }
@@ -114,7 +118,7 @@ export function Glance() {
     line = `${greet} · ${now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`;
   }
   return (
-    <section className="glance gl-rise">
+    <section className="glance">
       <h2>
         <button type="button" style={stealthTap} onClick={() => registerAdminTap("glance")} aria-label="At a glance">
           At a glance
