@@ -19,12 +19,12 @@ const stealth: CSSProperties = {
   userSelect: "none", WebkitTapHighlightColor: "transparent"
 };
 
-/* ---------- jam monokrom, sefile supaya tidak ada dependensi hilang ---------- */
+/* ---------- jam monokrom tunggal ---------- */
 const CLOCK_CSS = `
-.mc{display:inline-flex;align-items:center;gap:12px}
+.mc{display:inline-flex;align-items:center}
 .mc-face{
   position:relative;display:inline-flex;align-items:baseline;gap:1px;
-  padding:6px 12px;border-radius:var(--g-pill,999px);
+  padding:7px 14px;border-radius:var(--g-pill,999px);
   background:linear-gradient(150deg,var(--g-fill-2,rgba(255,255,255,.10)),transparent);
   border:1px solid var(--g-line,rgba(255,255,255,.14));
   backdrop-filter:blur(20px) brightness(1.06);
@@ -34,7 +34,7 @@ const CLOCK_CSS = `
 }
 .mc-face::after{
   content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.16) 50%,transparent 58%);
+  background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.15) 50%,transparent 58%);
   transform:translateX(-100%);
   animation:mc-sweep calc(9s * var(--mo,1)) var(--g-ease,cubic-bezier(.16,1,.3,1)) infinite;
 }
@@ -42,24 +42,18 @@ const CLOCK_CSS = `
 .mc-digits{
   display:inline-flex;font-family:var(--font-num,ui-monospace,monospace);
   font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em;
-  line-height:1;color:var(--ink,#fff);
+  line-height:1;color:var(--ink,#fff);font-size:16px;
 }
 .mc-col{position:relative;display:inline-grid;width:.62em;height:1.06em;overflow:hidden}
 .mc-d{grid-area:1/1;display:block;text-align:center}
 .mc-sep{opacity:.38;padding:0 1px}
-.mc-sec{font-size:.48em;margin-left:6px;align-self:flex-start;margin-top:.16em;opacity:.5;letter-spacing:0}
-.mc-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
-.mc-day{font-family:var(--font-num,ui-monospace);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink,#fff);white-space:nowrap}
-.mc-sub{font-family:var(--font-num,ui-monospace);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--g-dim-2,rgba(255,255,255,.4));white-space:nowrap}
-.mc-ring{flex:none;color:var(--ink,#fff)}
-.mc-ring circle{transition:stroke-dashoffset calc(900ms * var(--mo,1)) var(--g-ease,cubic-bezier(.16,1,.3,1))}
-.mc.row .mc-digits{font-size:15px}
-.mc.hero .mc-digits{font-size:clamp(34px,8vw,54px)}
-.mc.hero .mc-face{padding:12px 20px;border-radius:var(--g-r-l,30px)}
-.mc-hero{display:flex;align-items:center;gap:16px;flex:none}
-.ab-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
-@media (max-width:900px){.mc.hero{display:none}}
-@media (max-width:520px){.mc.row .mc-sec{display:none}}
+.mc-sec{font-size:.5em;margin-left:6px;align-self:flex-start;margin-top:.16em;opacity:.5;letter-spacing:0}
+.mc-day{
+  margin-left:10px;font-family:var(--font-num,ui-monospace);font-size:10px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--g-dim-2,rgba(255,255,255,.4));
+  white-space:nowrap;
+}
+@media (max-width:560px){.mc-sec,.mc-day{display:none}}
 :root[data-motion="reduce"] .mc-face::after{animation:none}
 @media (prefers-reduced-motion:reduce){.mc-face::after{animation:none}}
 `;
@@ -82,39 +76,26 @@ function Digit({ v }: { v: string }) {
   );
 }
 
-function MonoClock({ variant }: { variant: "row" | "hero" }) {
+function MonoClock() {
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
     setNow(new Date());
     let id = 0;
-    const tickTock = () => {
-      setNow(new Date());
-      id = window.setTimeout(tickTock, 1000 - (Date.now() % 1000));
-    };
-    id = window.setTimeout(tickTock, 1000 - (Date.now() % 1000));
+    const beat = () => { setNow(new Date()); id = window.setTimeout(beat, 1000 - (Date.now() % 1000)); };
+    id = window.setTimeout(beat, 1000 - (Date.now() % 1000));
     return () => clearTimeout(id);
   }, []);
 
   const hh = now ? String(now.getHours()).padStart(2, "0") : "--";
   const mm = now ? String(now.getMinutes()).padStart(2, "0") : "--";
   const ss = now ? String(now.getSeconds()).padStart(2, "0") : "--";
-  const pct = now ? now.getSeconds() / 60 : 0;
-  const R = 13;
-  const C = 2 * Math.PI * R;
-
-  let day = "\u00A0";
-  let sub = "\u00A0";
-  if (now) {
-    day = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
-    const h = now.getHours();
-    const greet = h < 5 ? "Selamat malam" : h < 11 ? "Selamat pagi" : h < 15 ? "Selamat siang" : h < 19 ? "Selamat sore" : "Selamat malam";
-    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "lokal").split("/").pop()?.replace(/_/g, " ") ?? "lokal";
-    sub = `${greet} · ${tz}`;
-  }
+  const day = now
+    ? now.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" })
+    : "";
 
   return (
-    <div className={`mc ${variant}`} suppressHydrationWarning>
+    <div className="mc" suppressHydrationWarning>
       <div className="mc-face">
         <span className="mc-digits" aria-label={now ? `${hh}:${mm}:${ss}` : "memuat jam"}>
           <Digit v={hh[0]} /><Digit v={hh[1]} />
@@ -123,19 +104,7 @@ function MonoClock({ variant }: { variant: "row" | "hero" }) {
           <span className="mc-sec">{ss}</span>
         </span>
       </div>
-      {variant === "hero" && (
-        <div className="mc-hero">
-          <svg className="mc-ring" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
-            <circle cx="17" cy="17" r={R} fill="none" stroke="currentColor" strokeOpacity=".18" strokeWidth="2.5" />
-            <circle cx="17" cy="17" r={R} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-              strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 17 17)" />
-          </svg>
-          <div className="mc-meta">
-            <span className="mc-day">{day}</span>
-            <span className="mc-sub">{sub}</span>
-          </div>
-        </div>
-      )}
+      {day && <span className="mc-day">{day}</span>}
     </div>
   );
 }
@@ -183,7 +152,7 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
           )}
           <span className="appbar-title-sm">{title}</span>
           <div className="appbar-actions">
-            <MonoClock variant="row" />
+            <MonoClock />
             {adminUi && (
               <button className="btn b-icon" aria-label="Buka panel admin" title="Panel admin · tekan lama untuk keluar"
                 onPointerDown={(e) => { attachRipple(e); down(); }}
@@ -196,25 +165,19 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
               aria-label={`Tema: ${LABEL[mode]}`} title={LABEL[mode]}>
               <Icon name={ICON[mode]} size={22} />
             </button>
-            <button className="btn b-icon" onPointerDown={attachRipple}
-              onClick={() => { window.dispatchEvent(new Event("px:open-settings")); tick(560); }}
-              aria-label="Pengaturan tampilan" title="Pengaturan">
-              <Icon name="tune" size={22} />
-            </button>
           </div>
         </div>
         {large && (
-          <div className="appbar-hero container ab-hero" style={{ height: "auto", minHeight: 104, paddingBottom: 18 }}>
-            <h1 className="appbar-title-lg" style={{ flex: "1 1 240px", minWidth: 0 }}>
+          <div className="appbar-hero container" style={{ height: "auto", minHeight: 96, paddingBottom: 18 }}>
+            <h1 className="appbar-title-lg">
               <button type="button" style={stealth} onClick={() => registerAdminTap("brand")} aria-label={title}>
                 {title}
               </button>
             </h1>
-            <MonoClock variant="hero" />
           </div>
         )}
       </header>
-      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} style={large ? { height: "calc(196px + var(--safe-t))" } : undefined} />
+      <div className={large ? "appbar-space-lg" : "appbar-space-sm"} style={large ? { height: "calc(172px + var(--safe-t))" } : undefined} />
     </>
   );
 }

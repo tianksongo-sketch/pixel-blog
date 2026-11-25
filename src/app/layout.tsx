@@ -13,13 +13,14 @@ import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
 import { Alive } from "@/components/Alive";
 import { CommandPalette } from "@/components/CommandPalette";
+import { SeaBackground } from "@/components/SeaBackground";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: { default: "F4KUYY", template: "%s · F4KUYY" },
-  description: "Catatan, cerita, dan hal-hal yang layak dibagikan. Hitam, putih, kaca.",
+  description: "Catatan, cerita, dan hal-hal yang layak dibagikan. Hitam, putih, kaca, dan laut.",
   icons: { icon: "/favicon.svg" },
   alternates: { canonical: "/", types: { "application/rss+xml": "/feed.xml" } },
   openGraph: { siteName: "F4KUYY", locale: "id_ID", type: "website" },
@@ -86,6 +87,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteLd) }} />
       </head>
       <body>
+        <SeaBackground />
         <Providers initial={{ seed: "mono", mode, consent, name, hasVid }}>
           <PageShell>{children}</PageShell>
           <Footer />
