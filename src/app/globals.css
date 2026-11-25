@@ -179,7 +179,7 @@ button { font: inherit; color: inherit; }
 .appbar-row { position: relative; display: flex; align-items: center; gap: 4px; height: 64px; }
 .appbar-title-sm { font-size: 22px; font-weight: 600; letter-spacing: -.2px; opacity: var(--ab-p); transform: translateY(calc((1 - var(--ab-p)) * 10px)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appbar-solid { --ab-p: 1; }
-.appbar-hero { position: relative; height: 88px; display: flex; align-items: flex-start; }
+.appbar-hero { position: relative; height: var(--ab-hero-height, 88px); display: flex; align-items: flex-start; overflow: hidden; }
 .appbar-title-lg {
   font-size: clamp(32px, 7vw, 40px); font-weight: 700; letter-spacing: -1.2px; line-height: 1.1;
   transform-origin: left top;

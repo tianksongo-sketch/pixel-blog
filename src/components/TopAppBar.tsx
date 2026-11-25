@@ -30,7 +30,12 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
     if (!el) return;
     if (!large) { el.style.setProperty("--ab-p", "1"); return; }
     let raf = 0;
-    const update = () => { raf = 0; el.style.setProperty("--ab-p", String(Math.min(1, window.scrollY / 76))); };
+    const update = () => {
+      raf = 0;
+      const progress = Math.min(1, window.scrollY / 76);
+      el.style.setProperty("--ab-p", String(progress));
+      el.style.setProperty("--ab-hero-height", `${88 * (1 - progress)}px`);
+    };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
