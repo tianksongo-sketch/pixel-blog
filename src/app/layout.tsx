@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { CSSProperties } from "react";
 import "./globals.css";
 import "./alive.css";
+import "./soft.css";
 import { isSeed, randomSeed, schemeVars, themeCss, type Mode } from "@/lib/theme";
 import { siteUrl } from "@/lib/utils";
 import { Providers } from "@/components/Providers";

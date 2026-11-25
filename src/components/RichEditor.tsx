@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from "react";
 import { compressImage } from "@/lib/img";
-import { htmlToText, sanitizeBody } from "@/lib/utils";
+import { htmlToText, sanitizeBody, softenHtml } from "@/lib/utils";
 import { attachRipple, Btn, Dialog, Icon } from "./ui";
 import { useApp } from "./Providers";
 
@@ -17,7 +17,7 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
   changeRef.current = onChange;
   const [words, setWords] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [active, setActive] = useState({ bold: false, italic: false, underline: false });
+  const [active, setActive] = useState({ bold: false, italic: false, underline: false, soft: false });
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkText, setLinkText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -32,19 +32,85 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
     changeRef.current(html);
   }, []);
 
-  /* Isi awal dipasang saat mount/keyed remount, lalu langsung dilaporkan ke parent. */
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.innerHTML = initialHtml || "";
+    el.innerHTML = softenHtml(initialHtml || "");
     savedRange.current = null;
-    setActive({ bold: false, italic: false, underline: false });
+    setActive({ bold: false, italic: false, underline: false, soft: false });
     emit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorKey]);
 
-  /* Jaring pengaman: apa pun yang terjadi di DOM (ketik, tempel, autofill,
-     perintah format, hapus) selalu tersinkron ke state parent. */
+  /* *teks* langsung berubah begitu bintang penutup diketik. */
+  const softRule = useCallback((): boolean => {
+    const el = ref.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+    const r = sel.getRangeAt(0);
+    const node = r.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE || !el.contains(node)) return false;
+    const parent = node.parentElement;
+    if (parent?.closest("em.soft-em, code, pre")) return false;
+
+    const text = node.textContent || "";
+    const upto = text.slice(0, r.startOffset);
+    const m = /(^|[\s\u00A0([{"'—–-])\*([^*\n]{1,400})\*$/.exec(upto);
+    if (!m) return false;
+
+    const start = r.startOffset - m[0].length + m[1].length;
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, r.startOffset);
+    range.deleteContents();
+
+    const em = document.createElement("em");
+    em.className = "soft-em";
+    em.textContent = m[2];
+    range.insertNode(em);
+
+    const tail = document.createTextNode("\u00A0");
+    em.parentNode?.insertBefore(tail, em.nextSibling);
+    const after = document.createRange();
+    after.setStart(tail, 1);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+    savedRange.current = after.cloneRange();
+    return true;
+  }, []);
+
+  const saveSelection = useCallback(() => {
+    const el = ref.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) return;
+    const r = sel.getRangeAt(0);
+    if (el.contains(r.commonAncestorContainer)) savedRange.current = r.cloneRange();
+  }, []);
+
+  useEffect(() => {
+    const onSel = () => {
+      const el = ref.current;
+      const sel = window.getSelection();
+      if (!el || !sel || sel.rangeCount === 0) return;
+      const r = sel.getRangeAt(0);
+      if (!el.contains(r.commonAncestorContainer)) return;
+      saveSelection();
+      const anchor = r.startContainer.nodeType === Node.TEXT_NODE ? r.startContainer.parentElement : (r.startContainer as HTMLElement);
+      const inSoft = !!anchor?.closest?.("em.soft-em");
+      try {
+        setActive({
+          bold: document.queryCommandState("bold"),
+          italic: document.queryCommandState("italic"),
+          underline: document.queryCommandState("underline"),
+          soft: inSoft
+        });
+      } catch { setActive((p) => ({ ...p, soft: inSoft })); }
+    };
+    document.addEventListener("selectionchange", onSel);
+    return () => document.removeEventListener("selectionchange", onSel);
+  }, [saveSelection]);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -65,33 +131,6 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
       if (raf) cancelAnimationFrame(raf);
     };
   }, [emit, editorKey]);
-
-  const saveSelection = useCallback(() => {
-    const el = ref.current;
-    const sel = window.getSelection();
-    if (!el || !sel || sel.rangeCount === 0) return;
-    const r = sel.getRangeAt(0);
-    if (el.contains(r.commonAncestorContainer)) savedRange.current = r.cloneRange();
-  }, []);
-
-  useEffect(() => {
-    const onSel = () => {
-      const el = ref.current;
-      const sel = window.getSelection();
-      if (!el || !sel || sel.rangeCount === 0) return;
-      if (!el.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
-      saveSelection();
-      try {
-        setActive({
-          bold: document.queryCommandState("bold"),
-          italic: document.queryCommandState("italic"),
-          underline: document.queryCommandState("underline")
-        });
-      } catch { /* browser lama */ }
-    };
-    document.addEventListener("selectionchange", onSel);
-    return () => document.removeEventListener("selectionchange", onSel);
-  }, [saveSelection]);
 
   const restore = () => {
     const el = ref.current;
@@ -122,6 +161,53 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
   const insertHtml = (html: string) => {
     restore();
     try { document.execCommand("insertHTML", false, html); } catch { /* abaikan */ }
+    saveSelection();
+    emit();
+  };
+
+  const toggleSoft = () => {
+    restore();
+    const el = ref.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) return;
+    const r = sel.getRangeAt(0);
+    const anchor = r.startContainer.nodeType === Node.TEXT_NODE ? r.startContainer.parentElement : (r.startContainer as HTMLElement);
+    const existing = anchor?.closest?.("em.soft-em") as HTMLElement | null;
+
+    if (existing && el.contains(existing)) {
+      const parent = existing.parentNode!;
+      const caret = document.createRange();
+      caret.setStartAfter(existing);
+      caret.collapse(true);
+      while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+      parent.removeChild(existing);
+      sel.removeAllRanges();
+      sel.addRange(caret);
+      saveSelection();
+      emit();
+      return;
+    }
+
+    const em = document.createElement("em");
+    em.className = "soft-em";
+    if (r.collapsed) {
+      em.textContent = "teks lembut";
+      r.insertNode(em);
+      const inner = document.createRange();
+      inner.selectNodeContents(em);
+      sel.removeAllRanges();
+      sel.addRange(inner);
+    } else {
+      em.appendChild(r.extractContents());
+      r.insertNode(em);
+      const tail = document.createTextNode("\u00A0");
+      em.parentNode?.insertBefore(tail, em.nextSibling);
+      const after = document.createRange();
+      after.setStart(tail, 1);
+      after.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(after);
+    }
     saveSelection();
     emit();
   };
@@ -173,15 +259,18 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
     const html = e.clipboardData.getData("text/html");
     const plain = e.clipboardData.getData("text/plain");
     if (html) insertHtml(sanitizeBody(html));
-    else if (plain) insertHtml(plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>"));
+    else if (plain) insertHtml(softenHtml(plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")));
   };
 
-  const tools: Array<{ icon: string; label: string; run: () => void; on: boolean } | { sep: true }> = [
+  const onInput = () => { softRule(); emit(); };
+
+  const tools: Array<{ icon: string; label: string; run: () => void; on: boolean; soft?: boolean } | { sep: true }> = [
     { icon: "photo_camera", label: "Kamera", run: () => camRef.current?.click(), on: false },
     { icon: "image", label: "Galeri", run: () => fileRef.current?.click(), on: false },
     { sep: true },
     { icon: "format_bold", label: "Tebal", run: () => exec("bold"), on: active.bold },
     { icon: "format_italic", label: "Miring", run: () => exec("italic"), on: active.italic },
+    { icon: "blur_on", label: "Miring lembut (*teks*)", run: toggleSoft, on: active.soft, soft: true },
     { icon: "format_underlined", label: "Garis bawah", run: () => exec("underline"), on: active.underline },
     { icon: "link", label: "Link", run: openLink, on: false },
     { sep: true },
@@ -206,13 +295,22 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
           ref={ref} className="rt-editor article-body" contentEditable suppressContentEditableWarning
           role="textbox" aria-multiline="true" aria-label="Isi postingan"
           data-placeholder="Mulai tulis postinganmu…"
-          onInput={emit} onBlur={() => { saveSelection(); emit(); }} onKeyUp={saveSelection}
+          onInput={onInput} onBlur={() => { saveSelection(); emit(); }} onKeyUp={saveSelection}
           onMouseUp={saveSelection} onPaste={onPaste}
         />
         <div className="rt-meta">
           {busy
             ? <span className="rt-uploading"><Icon name="cloud_upload" size={16} />Mengunggah foto…</span>
-            : <span>{words} kata · {minutes} mnt baca</span>}
+            : (
+              <span style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", width: "100%" }}>
+                <span>{words} kata · {minutes} mnt baca</span>
+                <span className="soft-hint" style={{ marginLeft: "auto" }}>
+                  <code>*teks*</code>
+                  <Icon name="arrow_forward" size={13} />
+                  <em className="soft-em">miring lembut</em>
+                </span>
+              </span>
+            )}
         </div>
       </div>
 
@@ -220,7 +318,8 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
         {tools.map((t, i) => "sep" in t ? (
           <span className="tool-sep" key={`s${i}`} />
         ) : (
-          <button key={t.label} type="button" className={`tool-btn${t.on ? " on" : ""}`}
+          <button key={t.label} type="button"
+            className={`tool-btn${t.on ? " on" : ""}${t.soft && t.on ? " soft-on" : ""}`}
             aria-label={t.label} aria-pressed={t.on} title={t.label}
             onPointerDown={(e) => { e.preventDefault(); attachRipple(e); }}
             onClick={t.run} disabled={busy}>
@@ -251,4 +350,4 @@ export function RichEditor({ initialHtml, editorKey, onChange }: Props) {
       </Dialog>
     </div>
   );
-      }
+}

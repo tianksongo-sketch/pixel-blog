@@ -34,11 +34,53 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/gi, "&");
 }
 
-/* ---------- Sanitizer isi artikel (allowlist, dibangun ulang dari token) ---------- */
+/* ---------- Penekanan lembut: *teks* → miring yang memudar ---------- */
+const SOFT_OPEN = '<em class="soft-em">';
+const SOFT_RE = /(^|[\s\u00A0([{"'—–-])\*([^*\n]{1,400}?)\*(?![\w*])/g;
+const STRONG_RE = /(^|[\s\u00A0([{"'—–-])\*\*([^*\n]{1,400}?)\*\*(?![\w*])/g;
+
+/** Untuk potongan teks yang sudah di-escape (tanpa tag). */
+export function softenText(escaped: string): string {
+  if (!escaped.includes("*")) return escaped;
+  let out = escaped.replace(STRONG_RE, (_m, pre: string, inner: string) => `${pre}<strong>${inner}</strong>`);
+  out = out.replace(SOFT_RE, (_m, pre: string, inner: string) => `${pre}${SOFT_OPEN}${inner}</em>`);
+  return out;
+}
+
+/** Untuk HTML utuh: hanya menyentuh node teks, melewati kode & yang sudah diubah. */
+export function softenHtml(html: string): string {
+  if (!html || !html.includes("*")) return html;
+  const parts = html.split(/(<[^>]+>)/g);
+  let skip = 0;
+  let soft = 0;
+  return parts.map((part) => {
+    if (!part) return part;
+    if (part.startsWith("<")) {
+      const tag = /^<\/?\s*([a-zA-Z0-9-]+)/.exec(part)?.[1]?.toLowerCase() ?? "";
+      const closing = part.startsWith("</");
+      const selfClose = /\/>$/.test(part);
+      if (tag === "code" || tag === "pre" || tag === "script" || tag === "style") {
+        if (closing) skip = Math.max(0, skip - 1);
+        else if (!selfClose) skip += 1;
+      }
+      if (tag === "em" && /class\s*=\s*["'][^"']*soft-em/.test(part)) {
+        if (closing) soft = Math.max(0, soft - 1);
+        else soft += 1;
+      } else if (tag === "em" && closing && soft > 0) {
+        soft = Math.max(0, soft - 1);
+      }
+      return part;
+    }
+    if (skip > 0 || soft > 0) return part;
+    return softenText(part);
+  }).join("");
+}
+
+/* ---------- Sanitizer isi artikel ---------- */
 const ALLOWED_TAGS = new Set([
   "p", "br", "div", "b", "strong", "i", "em", "u", "s", "strike",
   "h2", "h3", "h4", "ul", "ol", "li", "blockquote", "a", "img",
-  "figure", "figcaption", "hr", "code", "pre"
+  "figure", "figcaption", "hr", "code", "pre", "span"
 ]);
 const VOID_TAGS = new Set(["br", "img", "hr"]);
 const BAD_BLOCK = /<(script|style|iframe|object|embed|noscript|template|svg|math|form|input|button|textarea|select)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
@@ -80,8 +122,13 @@ export function sanitizeBody(input: string, maxLen = 200000): string {
   const re = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
   let last = 0;
   let imgs = 0;
+  let codeDepth = 0;
   let m: RegExpExecArray | null;
-  const text = (t: string) => { if (t) out.push(escapeHtml(decodeEntities(t))); };
+  const text = (t: string) => {
+    if (!t) return;
+    const esc = escapeHtml(decodeEntities(t));
+    out.push(codeDepth > 0 ? esc : softenText(esc));
+  };
   const closeTo = (tag: string) => {
     const i = stack.lastIndexOf(tag);
     if (i < 0) return;
@@ -96,7 +143,11 @@ export function sanitizeBody(input: string, maxLen = 200000): string {
     const closing = m[1] === "/";
     const tag = m[2].toLowerCase();
     if (!ALLOWED_TAGS.has(tag)) continue;
-    if (closing) { closeTo(tag); continue; }
+    if (closing) {
+      if ((tag === "code" || tag === "pre") && codeDepth > 0) codeDepth--;
+      closeTo(tag);
+      continue;
+    }
     if (stack.length > 24) continue;
     const at = parseAttrs(m[3] || "");
     if (tag === "img") {
@@ -117,6 +168,20 @@ export function sanitizeBody(input: string, maxLen = 200000): string {
       continue;
     }
     if (VOID_TAGS.has(tag)) { out.push(`<${tag} />`); continue; }
+    if (tag === "em" || tag === "i") {
+      const soft = /(^|\s)soft-em(\s|$)/.test(at.class || "");
+      out.push(soft ? SOFT_OPEN : `<${tag}>`);
+      stack.push(soft ? "em" : tag);
+      continue;
+    }
+    if (tag === "span") {
+      const soft = /(^|\s)soft-em(\s|$)/.test(at.class || "");
+      if (!soft) continue;
+      out.push(SOFT_OPEN);
+      stack.push("em");
+      continue;
+    }
+    if (tag === "code" || tag === "pre") codeDepth++;
     out.push(`<${tag}>`);
     stack.push(tag);
   }
@@ -138,6 +203,8 @@ export function htmlToText(html: string): string {
     .replace(/&#(\d{1,7});/g, (_, d) => safeChar(parseInt(d, 10)))
     .replace(/&nbsp;/gi, " ").replace(/&quot;/gi, '"').replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&")
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -183,7 +250,7 @@ export function commentHtml(escaped: string): string {
     if (!/^https?:\/\/\S+$/i.test(m)) return raw;
     return `<a class="link" href="${m}" target="_blank" rel="noopener noreferrer nofollow">${m}</a>${tail}`;
   });
-  return linked.replace(/\n/g, "<br/>");
+  return softenText(linked).replace(/\n/g, "<br/>");
 }
 
 export function timeAgo(ts: number): string {
@@ -212,7 +279,6 @@ export function normalizeLink(input: string): string | null {
   } catch { return null; }
 }
 
-/** Link opsional: kosong = "", terisi tapi salah = null. */
 export function optionalLink(input: string): string | null {
   const s = (input || "").trim();
   if (!s) return "";

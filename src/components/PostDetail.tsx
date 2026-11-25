@@ -1,10 +1,10 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import type { Comment, PostCard, PostFull } from "@/lib/db";
-import { formatDate, hostOf } from "@/lib/utils";
+import { formatDate, hostOf, softenHtml } from "@/lib/utils";
 import { warm } from "@/lib/nav";
 import { attachRipple, Avatar, Icon, LabelChip, RollingNumber, useParallax } from "./ui";
 import { LikeButton } from "./LikeButton";
@@ -37,6 +37,7 @@ export function PostDetail({ post, stats, comments, newer, older, views }: Props
   const [reads, setReads] = useState(views);
   const emptyBody = !post.body || !post.body.replace(/<[^>]*>/g, "").trim();
   const showPhoto = post.hasCover && !failed;
+  const bodyHtml = useMemo(() => softenHtml(post.body || ""), [post.body]);
 
   const attachImg = useCallback((el: HTMLImageElement | null) => {
     parallax.current = el;
@@ -161,7 +162,7 @@ export function PostDetail({ post, stats, comments, newer, older, views }: Props
         ) : (
           <>
             <Toc postId={post.id} />
-            <div className="article-body" dangerouslySetInnerHTML={{ __html: post.body }} />
+            <div className="article-body" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
           </>
         )}
 
