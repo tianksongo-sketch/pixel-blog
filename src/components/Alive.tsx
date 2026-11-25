@@ -8,38 +8,45 @@ const SHORTCUTS: Array<[string, string]> = [
   ["/", "Fokus ke pencarian"],
   ["G lalu H", "Ke beranda"],
   ["G lalu A", "Ke About blog"],
-  ["G lalu T", "Buka panel tema"],
+  ["G lalu T", "Buka pengaturan"],
   ["?", "Tampilkan pintasan ini"],
   ["Esc", "Tutup panel aktif"]
 ];
+
+/* Selektor yang otomatis diberi reveal kalau belum punya. */
+const AUTO_REVEAL = ".feed-grid > *, .admin-list > *, .stat-strip > *, .alp-meters > *, .gs > *, .gs-tile, .alp-top > *, .share-row-pills > *";
 
 export function Alive() {
   const [help, setHelp] = useState(false);
   const gKey = useRef(0);
 
   useEffect(() => {
-    if (reducedMotion()) {
-      document.querySelectorAll("[data-reveal]").forEach((el) => el.classList.add("al-in"));
-      return;
-    }
+    const all = () => Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+    const showAll = () => all().forEach((el) => el.classList.add("al-in"));
+
+    if (reducedMotion()) { showAll(); return; }
+
     const io = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (!e.isIntersecting) return;
-        const el = e.target as HTMLElement;
+      entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        const el = en.target as HTMLElement;
         const sibs = Array.from(el.parentElement?.children ?? []);
-        const idx = Math.max(0, sibs.indexOf(el));
-        el.style.setProperty("--al-delay", `${Math.min(idx, 8) * 55}ms`);
+        el.style.setProperty("--al-delay", `${Math.min(Math.max(sibs.indexOf(el), 0), 8) * 55}ms`);
         el.classList.add("al-in");
         io.unobserve(el);
       });
-    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.06 });
+    }, { rootMargin: "0px 0px -6% 0px", threshold: 0.04 });
 
     const scan = () => {
-      document.querySelectorAll<HTMLElement>(".feed-grid > *, .admin-list > *, .stat-strip > *, .alp-meters > *").forEach((el) => {
+      /* 1) elemen yang sudah menandai diri sendiri (mis. .gs-tile) */
+      all().forEach((el) => { if (!el.classList.contains("al-in")) io.observe(el); });
+      /* 2) elemen wadah yang belum ditandai */
+      document.querySelectorAll<HTMLElement>(AUTO_REVEAL).forEach((el) => {
         if (el.dataset.reveal) return;
         el.dataset.reveal = "1";
         io.observe(el);
       });
+      /* 3) sisipkan lensa sorot pada kartu */
       document.querySelectorAll<HTMLElement>(".card").forEach((card) => {
         if (card.querySelector(":scope > .al-spot")) return;
         const s = document.createElement("span");
@@ -48,9 +55,10 @@ export function Alive() {
         card.appendChild(s);
       });
     };
+
     scan();
     let t = 0;
-    const mo = new MutationObserver(() => { window.clearTimeout(t); t = window.setTimeout(scan, 120); });
+    const mo = new MutationObserver(() => { window.clearTimeout(t); t = window.setTimeout(scan, 110); });
     mo.observe(document.body, { childList: true, subtree: true });
     return () => { io.disconnect(); mo.disconnect(); window.clearTimeout(t); };
   }, []);
@@ -70,8 +78,8 @@ export function Alive() {
       card.style.setProperty("--mx", `${(nx * 100).toFixed(1)}%`);
       card.style.setProperty("--my", `${(ny * 100).toFixed(1)}%`);
       card.classList.add("al-tilt");
-      card.style.setProperty("--ry", `${((nx - 0.5) * 3.4).toFixed(2)}deg`);
-      card.style.setProperty("--rx", `${((0.5 - ny) * 2.6).toFixed(2)}deg`);
+      card.style.setProperty("--ry", `${((nx - 0.5) * 3.2).toFixed(2)}deg`);
+      card.style.setProperty("--rx", `${((0.5 - ny) * 2.4).toFixed(2)}deg`);
     };
     const onMove = (e: PointerEvent) => {
       const card = (e.target as HTMLElement | null)?.closest?.(".card") as HTMLElement | null;
@@ -111,7 +119,7 @@ export function Alive() {
       if (Date.now() - gKey.current < 900) {
         if (k === "h") { e.preventDefault(); window.dispatchEvent(new CustomEvent("px:navigate", { detail: { href: "/" } })); gKey.current = 0; }
         else if (k === "a") { e.preventDefault(); window.dispatchEvent(new CustomEvent("px:navigate", { detail: { href: "/about" } })); gKey.current = 0; }
-        else if (k === "t") { e.preventDefault(); window.dispatchEvent(new Event("px:open-theme")); gKey.current = 0; }
+        else if (k === "t") { e.preventDefault(); window.dispatchEvent(new Event("px:open-settings")); gKey.current = 0; }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -130,7 +138,7 @@ export function Alive() {
         ))}
       </div>
       <p style={{ marginTop: 14, fontSize: 12.5, color: "var(--md-on-surface-variant)", display: "flex", gap: 8, alignItems: "center" }}>
-        <Icon name="bolt" size={16} />Kartu menyorot mengikuti kursor, dan muncul bertahap saat digulir.
+        <Icon name="waves" size={16} />Laut di belakang bergerak pelan; kartu menyorot mengikuti kursor.
       </p>
     </Dialog>
   );

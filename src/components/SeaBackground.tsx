@@ -2,8 +2,6 @@
 import { useEffect, useRef } from "react";
 import { calmNow } from "@/lib/motion";
 
-/* Posisi bintang & bintang jatuh dihitung deterministik di module-scope,
-   supaya render server dan klien identik (tidak ada hydration mismatch). */
 function lcg(seed: number) {
   let s = seed >>> 0;
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -22,7 +20,6 @@ const SHOOTS = [
   { x: 58, y: 12, d: 11 }
 ];
 
-/* Satu periode gelombang diulang 4x supaya translateX(-50%) mulus tanpa patah. */
 const WAVE =
   "M0 60 C120 20 240 20 360 60 C480 100 600 100 720 60 " +
   "C840 20 960 20 1080 60 C1200 100 1320 100 1440 60 " +
@@ -32,6 +29,10 @@ const WAVE =
 const SEA_CSS = `
 :root{--sea-t:1}
 :root[data-lebay="on"]{--sea-t:.55}
+
+/* KUNCI: badan halaman harus transparan supaya laut di belakang terlihat. */
+html{background:var(--canvas,#000)}
+body{background:transparent!important}
 body::before{display:none!important}
 
 .sea{
@@ -42,7 +43,7 @@ body::before{display:none!important}
   --star:#FFFFFF;--refl:rgba(255,255,255,.30);--foam:rgba(255,255,255,.55);
   background:linear-gradient(180deg,var(--sky1) 0%,var(--sky2) 46%,var(--sea1) 47%,var(--sea2) 100%);
   transform:translate3d(var(--sx,0px),var(--sy,0px),0);
-  transition:transform .8s cubic-bezier(.16,1,.3,1);
+  transition:transform .9s cubic-bezier(.16,1,.3,1);
 }
 :root[data-mode="light"] .sea{
   --w1:rgba(0,0,0,.05);--w2:rgba(0,0,0,.09);--w3:rgba(0,0,0,.15);
@@ -60,7 +61,7 @@ body::before{display:none!important}
 }
 
 .sea-orb{
-  position:absolute;right:13%;top:17%;
+  position:absolute;right:13%;top:15%;
   width:clamp(64px,11vw,124px);aspect-ratio:1;border-radius:50%;
   background:var(--orb);
   box-shadow:0 0 70px 22px var(--orb-glow);
@@ -72,9 +73,11 @@ body::before{display:none!important}
 
 .sea-stars{position:absolute;inset:0 0 53% 0}
 .sea-stars i{position:absolute;border-radius:50%;background:var(--star);animation:sea-twinkle calc(4.5s * var(--sea-t)) ease-in-out infinite}
-@keyframes sea-twinkle{0%,100%{opacity:.15;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes sea-twinkle{0%,100%{opacity:.12;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
 :root[data-mode="light"] .sea-stars,:root[data-mode="light"] .sea-shoot{display:none}
-@media (prefers-color-scheme: light){:root:not([data-mode="dark"]) .sea-stars,:root:not([data-mode="dark"]) .sea-shoot{display:none}}
+@media (prefers-color-scheme: light){
+  :root:not([data-mode="dark"]) .sea-stars,:root:not([data-mode="dark"]) .sea-shoot{display:none}
+}
 
 .sea-shoot{
   position:absolute;width:150px;height:1.5px;border-radius:999px;
@@ -140,10 +143,7 @@ export function SeaBackground() {
       <div className="sea" ref={ref} aria-hidden="true">
         <div className="sea-stars">
           {STARS.map((s, i) => (
-            <i key={i} style={{
-              left: s.x + "%", top: s.y + "%", width: s.s, height: s.s,
-              opacity: s.o, animationDelay: s.d + "s"
-            }} />
+            <i key={i} style={{ left: s.x + "%", top: s.y + "%", width: s.s, height: s.s, opacity: s.o, animationDelay: s.d + "s" }} />
           ))}
         </div>
         {SHOOTS.map((s, i) => (
