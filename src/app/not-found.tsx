@@ -1,20 +1,24 @@
-import Link from "next/link";
-import { TopAppBar } from "@/components/TopAppBar";
-import { Icon } from "@/components/ui";
+import type { Metadata } from "next";
+
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "404 — Tidak Ditemukan",
+  robots: { index: false, follow: false }
+};
 
 export default function NotFound() {
   return (
-    <>
-      <TopAppBar title="Pixel Blog" back />
-      <main className="container nf">
-        <div className="nf-badge">404</div>
-        <h1>Waduh, nyasar nih.</h1>
-        <p>Halaman yang kamu cari tidak ada atau sudah dipindahkan.</p>
-        <Link href="/" className="btn b-filled" style={{ marginTop: 8 }}>
-          <Icon name="home" size={18} />
-          Kembali ke beranda
-        </Link>
-      </main>
-    </>
+    <main className="container page nf">
+      <div className="nf-badge">404</div>
+      <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em" }}>Halaman tidak ditemukan</h1>
+      <p style={{ color: "var(--ink2)", fontSize: 14, maxWidth: 380, textAlign: "center" }}>
+        Tautan yang kamu buka mungkin sudah dihapus, salah ketik, atau memang tidak pernah ada.
+      </p>
+      <a href="/" className="btn b-filled" style={{ marginTop: 8 }}>
+        <span className="ms" style={{ fontSize: 18 }}>home</span>
+        Kembali ke beranda
+      </a>
+    </main>
   );
 }
