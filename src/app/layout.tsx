@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import type { CSSProperties } from "react";
-import "./flow.css"; // HANYA flow.css, tidak ada globals.css/alive.css/soft.css/glass.css
+import "./flow.css";
 import { themeCss, type Mode } from "@/lib/theme";
 import { siteUrl } from "@/lib/utils";
 import { defaultOgImage, SITE_DESC } from "@/lib/seo";
@@ -59,10 +59,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const rawFlow = c.get("px_flow")?.value;
   if (rawFlow) { try { flow = normalizeFlow(JSON.parse(decodeURIComponent(rawFlow))); } catch {} }
 
-  const style = {
-    ...flowVars(flow),
-    "--mo": flow.reduce ? "0" : "1"
-  } as CSSProperties;
+  const style = { ...flowVars(flow), "--mo": flow.reduce ? "0" : "1" } as CSSProperties;
 
   const base = siteUrl();
   const ld = {
@@ -77,7 +74,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="id" data-mode={mode} data-wall={flow.wallpaper} data-clock={flow.clock}
-      data-scrolling="0"
       data-quality={flow.quality === "full" ? "full" : "lite"}
       data-motion={flow.reduce ? "reduce" : "full"} style={style}>
       <head>
