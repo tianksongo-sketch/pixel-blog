@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import type { CSSProperties } from "react";
-import "./globals.css";
-import "./flow.css";
+import "./flow.css"; // HANYA flow.css, tidak ada globals.css/alive.css/soft.css/glass.css
 import { themeCss, type Mode } from "@/lib/theme";
 import { siteUrl } from "@/lib/utils";
 import { defaultOgImage, SITE_DESC } from "@/lib/seo";
@@ -45,14 +44,8 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
-const ICONS_SCRIPT = `(function(){
-  var d=document,n=0,t;
-  function ok(){try{return !!(d.fonts&&d.fonts.check('16px "Material Symbols Rounded"'))}catch(e){return false}}
-  function on(){if(!ok())return false;d.documentElement.classList.add('icons-on');if(t)clearInterval(t);return true}
-  if(on())return;
-  t=setInterval(function(){n++;if(on()||n>=40)clearInterval(t)},250);
-  if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function')d.fonts.ready.then(on);
-})();`;
+const ICONS_SCRIPT = `(function(){var d=document;function on(){d.documentElement.classList.add('icons-on')}
+if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function'){d.fonts.ready.then(on)}setTimeout(on,1500);})();`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const c = await cookies();
@@ -66,7 +59,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const rawFlow = c.get("px_flow")?.value;
   if (rawFlow) { try { flow = normalizeFlow(JSON.parse(decodeURIComponent(rawFlow))); } catch {} }
 
-  const style = { ...flowVars(flow), "--mo": flow.reduce ? "0" : "1" } as CSSProperties;
+  const style = {
+    ...flowVars(flow),
+    "--mo": flow.reduce ? "0" : "1"
+  } as CSSProperties;
 
   const base = siteUrl();
   const ld = {
@@ -81,6 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="id" data-mode={mode} data-wall={flow.wallpaper} data-clock={flow.clock}
+      data-scrolling="0"
       data-quality={flow.quality === "full" ? "full" : "lite"}
       data-motion={flow.reduce ? "reduce" : "full"} style={style}>
       <head>
