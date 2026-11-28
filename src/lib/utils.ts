@@ -34,12 +34,10 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/gi, "&");
 }
 
-/* ---------- Penekanan lembut: *teks* → miring yang memudar ---------- */
 const SOFT_OPEN = '<em class="soft-em">';
 const SOFT_RE = /(^|[\s\u00A0([{"'—–-])\*([^*\n]{1,400}?)\*(?![\w*])/g;
 const STRONG_RE = /(^|[\s\u00A0([{"'—–-])\*\*([^*\n]{1,400}?)\*\*(?![\w*])/g;
 
-/** Untuk potongan teks yang sudah di-escape (tanpa tag). */
 export function softenText(escaped: string): string {
   if (!escaped.includes("*")) return escaped;
   let out = escaped.replace(STRONG_RE, (_m, pre: string, inner: string) => `${pre}<strong>${inner}</strong>`);
@@ -47,7 +45,6 @@ export function softenText(escaped: string): string {
   return out;
 }
 
-/** Untuk HTML utuh: hanya menyentuh node teks, melewati kode & yang sudah diubah. */
 export function softenHtml(html: string): string {
   if (!html || !html.includes("*")) return html;
   const parts = html.split(/(<[^>]+>)/g);
@@ -76,7 +73,6 @@ export function softenHtml(html: string): string {
   }).join("");
 }
 
-/* ---------- Sanitizer isi artikel ---------- */
 const ALLOWED_TAGS = new Set([
   "p", "br", "div", "b", "strong", "i", "em", "u", "s", "strike",
   "h2", "h3", "h4", "ul", "ol", "li", "blockquote", "a", "img",
@@ -241,7 +237,6 @@ export function parseLabels(input: unknown): string[] {
   return out;
 }
 
-/* ---------- Komentar ---------- */
 export function commentHtml(escaped: string): string {
   const linked = escaped.replace(/https?:\/\/[^\s<]+/g, (raw) => {
     let m = raw;
@@ -266,7 +261,6 @@ export function timeAgo(ts: number): string {
   return formatDate(ts);
 }
 
-/* ---------- Link ---------- */
 export function normalizeLink(input: string): string | null {
   let s = (input || "").trim();
   if (!s) return null;

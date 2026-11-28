@@ -114,7 +114,7 @@ export function CommandPalette() {
               </div>
               <div className="al-pal-list" ref={listRef}>
                 {loading && <div className="al-pal-empty">Memuat…</div>}
-                {!loading && rows.length === 0 && <div className="al-pal-empty">Tidak ada yang cocok dengan “{q}”.</div>}
+                {!loading && rows.length === 0 && <div className="al-pal-empty">Tidak ada yang cocok dengan "{q}".</div>}
                 {rows.map((r, i) => {
                   const head = r.group !== lastGroup ? r.group : "";
                   lastGroup = r.group;

@@ -51,8 +51,6 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
-/* Ikon disembunyikan hanya sampai font ikon selesai dimuat, lalu DIPAKSA muncul
-   maksimal 1,5 detik — supaya tombol tidak pernah kosong permanen. */
 const ICONS_SCRIPT = `(function(){
   var d=document;
   function on(){d.documentElement.classList.add('icons-on')}

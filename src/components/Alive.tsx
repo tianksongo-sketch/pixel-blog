@@ -13,7 +13,6 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Esc", "Tutup panel aktif"]
 ];
 
-/* Selektor yang otomatis diberi reveal kalau belum punya. */
 const AUTO_REVEAL = ".feed-grid > *, .admin-list > *, .stat-strip > *, .alp-meters > *, .gs > *, .gs-tile, .alp-top > *, .share-row-pills > *";
 
 export function Alive() {
@@ -38,15 +37,12 @@ export function Alive() {
     }, { rootMargin: "0px 0px -6% 0px", threshold: 0.04 });
 
     const scan = () => {
-      /* 1) elemen yang sudah menandai diri sendiri (mis. .gs-tile) */
       all().forEach((el) => { if (!el.classList.contains("al-in")) io.observe(el); });
-      /* 2) elemen wadah yang belum ditandai */
       document.querySelectorAll<HTMLElement>(AUTO_REVEAL).forEach((el) => {
         if (el.dataset.reveal) return;
         el.dataset.reveal = "1";
         io.observe(el);
       });
-      /* 3) sisipkan lensa sorot pada kartu */
       document.querySelectorAll<HTMLElement>(".card").forEach((card) => {
         if (card.querySelector(":scope > .al-spot")) return;
         const s = document.createElement("span");

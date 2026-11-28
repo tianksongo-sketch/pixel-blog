@@ -12,7 +12,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ l
   const vid = (await cookies()).get("px_vid")?.value;
   const posts = await getFeed(vid);
 
-  /* Statistik dihitung di server supaya angkanya selalu benar saat render. */
   const views = await Promise.all(posts.map((p) => getViews(p.id).catch(() => 0)));
   const stats = {
     posts: posts.length,

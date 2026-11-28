@@ -19,7 +19,6 @@ function parseRow(x: unknown): OwnedComment | null {
   return { id, name: S(r.name) || "Anon", text: S(r.text), ts: N(r.ts, Date.now()), vid: S(r.vid) };
 }
 
-/** Komentar beserta pemiliknya. Hanya untuk pemeriksaan di server. */
 export async function readOwned(postId: string): Promise<OwnedComment[]> {
   if (!postId) return [];
   if (!redis) return [...(g.__pxmem?.comments?.get(postId) ?? [])];
@@ -29,7 +28,6 @@ export async function readOwned(postId: string): Promise<OwnedComment[]> {
   } catch { return []; }
 }
 
-/** Daftar untuk publik: vid tidak pernah dikirim, hanya flag "mine". */
 export async function listFor(postId: string, vid?: string): Promise<PublicComment[]> {
   const rows = await readOwned(postId);
   return rows.map((c) => ({

@@ -12,6 +12,8 @@ const NEXT: Record<Mode, Mode> = { auto: "light", light: "dark", dark: "auto" };
 const ICON: Record<Mode, string> = { auto: "brightness_auto", light: "light_mode", dark: "dark_mode" };
 const LABEL: Record<Mode, string> = { auto: "Auto", light: "Light", dark: "Dark" };
 
+const HERO_H = 96;
+
 const stealth: CSSProperties = {
   background: "none", border: 0, padding: 0, margin: 0,
   font: "inherit", color: "inherit", letterSpacing: "inherit",
@@ -19,9 +21,6 @@ const stealth: CSSProperties = {
   userSelect: "none", WebkitTapHighlightColor: "transparent"
 };
 
-/* Header sticky tinggi KONSTAN. Latar blur & judul kecil hanya toggle class
-   sekali saat melewati ambang scroll — tanpa penulisan layout per frame,
-   jadi tidak ada flicker. */
 const BAR_CSS = `
 .ab2{position:sticky;top:0;z-index:40;padding-top:var(--safe-t,0px)}
 .ab2-row{position:relative;display:flex;align-items:center;gap:6px;height:60px}
@@ -60,7 +59,6 @@ const BAR_CSS = `
 }
 .ab2-actions .btn.b-icon:hover{color:var(--ink,#fff);background:var(--g-fill-2,rgba(255,255,255,.1))}
 
-/* Hero kini konten aliran biasa: ikut ter-scroll, tidak mengubah tinggi header. */
 .ab2-hero{position:relative;padding:14px 0 20px}
 .ab2-hero h1{
   font-family:var(--font-display,"Anton",sans-serif);font-weight:400;text-transform:uppercase;
@@ -162,7 +160,6 @@ export function TopAppBar({ title, large = false, back = false }: { title: strin
   const lp = useRef<number | null>(null);
   const fired = useRef(false);
 
-  /* Hanya toggle class saat melewati ambang — satu kali, bukan tiap frame. */
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

@@ -11,14 +11,7 @@ const MODES: Array<{ id: Mode; label: string; icon: string }> = [
   { id: "dark", label: "Dark", icon: "dark_mode" }
 ];
 
-/* ==========================================================================
-   LAPISAN PERBAIKAN
-   1. Foto postingan berwarna lagi — hanya UI yang monokrom.
-   2. App bar punya dasar padat + blur, jadi konten tidak menembus saat digulir.
-   3. FAB "Tampilan" dihapus; FAB lain turun ke posisi normal.
-   ========================================================================== */
 const FIX_CSS = `
-/* --- 1. foto berwarna --- */
 .card-media img,
 .article-hero img,
 .article-body img,
@@ -30,7 +23,6 @@ const FIX_CSS = `
 .gs-tile img { filter: none !important; }
 .lqip { filter: blur(18px) !important; }
 
-/* --- 2. app bar tidak lagi tembus pandang --- */
 .appbar { isolation: isolate; }
 .appbar-bg {
   opacity: 1 !important;
@@ -46,21 +38,16 @@ const FIX_CSS = `
 @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
   .appbar-bg { background-color: var(--canvas) !important; }
 }
-/* judul kecil tetap muncul bertahap, tapi bar-nya sendiri selalu terbaca */
 .appbar-title-sm { opacity: var(--ab-p, 1); }
 .appbar-solid .appbar-title-sm { opacity: 1; }
 
-/* --- 3. tanpa FAB Tampilan, FAB lain turun --- */
 .fab-admin,
 .fab-top { bottom: calc(16px + var(--nav-h, 0px) + var(--safe-b)) !important; }
 .snackbar { bottom: calc(84px + var(--nav-h, 0px) + var(--safe-b)) !important; }
 
-/* ruang bawah halaman tidak perlu setinggi dulu */
 .page { padding-bottom: calc(112px + var(--nav-h, 0px) + var(--safe-b)) !important; }
 `;
 
-/* CATATAN: nama export tetap ThemeFab supaya Providers tidak perlu diubah.
-            Isinya sekarang HANYA panel pengaturan — tombol mengapungnya dihapus. */
 export function ThemeFab() {
   const { mode, setMode, adminUi, lockAdminUi } = useApp();
   const [open, setOpen] = useState(false);

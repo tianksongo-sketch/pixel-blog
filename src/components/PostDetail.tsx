@@ -22,9 +22,16 @@ type Props = {
 };
 
 const ANCHOR_CSS = `
-#comments{scroll-margin-top:calc(104px + var(--safe-t));}
-.article-body h2,.article-body h3,.article-body h4{scroll-margin-top:calc(104px + var(--safe-t));}
+#comments{scroll-margin-top:calc(96px + var(--safe-t))}
+.article-body h2,.article-body h3,.article-body h4{scroll-margin-top:calc(96px + var(--safe-t))}
 `;
+
+function cleanArticle(html: string): string {
+  return String(html || "")
+    .replace(/<p[^>]*>\s*(?:-{2,}|—{2,}|_{2,})\s*<\/p>/gi, "")
+    .replace(/\[\[\d+(?:[^\]]*)?\]\]/g, "")
+    .replace(/<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, "");
+}
 
 export function PostDetail({ post, stats, comments, newer, older, views }: Props) {
   const router = useRouter();
@@ -37,7 +44,7 @@ export function PostDetail({ post, stats, comments, newer, older, views }: Props
   const [reads, setReads] = useState(views);
   const emptyBody = !post.body || !post.body.replace(/<[^>]*>/g, "").trim();
   const showPhoto = post.hasCover && !failed;
-  const bodyHtml = useMemo(() => softenHtml(post.body || ""), [post.body]);
+  const bodyHtml = useMemo(() => softenHtml(cleanArticle(post.body || "")), [post.body]);
 
   const attachImg = useCallback((el: HTMLImageElement | null) => {
     parallax.current = el;
@@ -173,6 +180,7 @@ export function PostDetail({ post, stats, comments, newer, older, views }: Props
           <button
             className="btn b-text act" onPointerDown={attachRipple}
             onClick={() => document.getElementById("comments")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            aria-label="Lihat komentar"
           >
             <Icon name="chat_bubble" size={21} />
             <RollingNumber value={stats.comments} />

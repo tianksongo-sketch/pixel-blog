@@ -1,10 +1,8 @@
-/* Preferensi gerak & rasa. Disimpan lokal, diterapkan ke <html>, tanpa konteks React. */
-
 export type MotionPrefs = {
-  lebay: boolean;      /* animasi 2x, seperti di referensi */
-  reduce: boolean;     /* hormati pengguna, paksa tenang */
-  haptic: boolean;     /* getar halus */
-  sound: boolean;      /* tick antarmuka, default mati untuk blog */
+  lebay: boolean;
+  reduce: boolean;
+  haptic: boolean;
+  sound: boolean;
 };
 
 export const DEFAULT_MOTION: MotionPrefs = { lebay: false, reduce: false, haptic: true, sound: false };

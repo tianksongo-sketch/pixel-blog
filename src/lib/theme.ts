@@ -1,12 +1,6 @@
-/* ==========================================================================
-   MONOKROM. Tidak ada seed, tidak ada palet, tidak ada acak warna.
-   Nama export lama dipertahankan supaya Providers/CommandPalette tetap jalan.
-   ========================================================================== */
-
 export type Mode = "auto" | "light" | "dark";
 export type Vars = Record<string, string>;
 
-/* CATATAN: SEEDS sengaja satu nilai netral. UI pemilih warna sudah dihapus. */
 export const SEEDS = ["#FFFFFF"];
 
 export function isSeed(s?: string | null): s is string {

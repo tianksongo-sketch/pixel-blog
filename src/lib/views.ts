@@ -12,7 +12,6 @@ function mem(): Mem {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-/** Satu pembaca dihitung sekali per hari per tulisan. HyperLogLog: hemat memori. */
 export async function addView(id: string, who: string): Promise<number> {
   if (!id || !who) return getViews(id);
   if (!redis) {
