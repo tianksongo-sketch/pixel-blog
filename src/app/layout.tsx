@@ -2,19 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import type { CSSProperties } from "react";
 import "./globals.css";
-import "./alive.css";
-import "./soft.css";
-import "./glass.css";
-import { schemeVars, themeCss, type Mode } from "@/lib/theme";
+import "./flow.css";
+import { themeCss, type Mode } from "@/lib/theme";
 import { siteUrl } from "@/lib/utils";
 import { defaultOgImage, SITE_DESC } from "@/lib/seo";
+import { DEFAULT_FLOW, flowVars, normalizeFlow } from "@/lib/flow";
 import { Providers } from "@/components/Providers";
-import { Footer } from "@/components/Footer";
-import { BottomNav } from "@/components/BottomNav";
 import { PageShell } from "@/components/PageShell";
-import { Alive } from "@/components/Alive";
-import { CommandPalette } from "@/components/CommandPalette";
-import { SeaBackground } from "@/components/SeaBackground";
+import { OSShell } from "@/components/os/OSShell";
 
 export const dynamic = "force-dynamic";
 
@@ -39,33 +34,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export async function generateViewport(): Promise<Viewport> {
   const c = await cookies();
-  const raw = c.get("px_mode")?.value;
-  const dark = raw !== "light";
+  const dark = c.get("px_mode")?.value !== "light";
   return {
     width: "device-width", initialScale: 1, viewportFit: "cover",
     themeColor: [
-      { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
-      { media: "(prefers-color-scheme: dark)", color: "#000000" }
+      { media: "(prefers-color-scheme: light)", color: "#F3EFFA" },
+      { media: "(prefers-color-scheme: dark)", color: "#120A2A" }
     ],
     colorScheme: dark ? "dark light" : "light dark"
   };
 }
 
-const ICONS_SCRIPT = `(function(){
-  var d=document;
-  function on(){d.documentElement.classList.add('icons-on')}
-  if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function'){d.fonts.ready.then(on)}
-  setTimeout(on,1500);
-})();`;
-
-const A11Y_CSS = `
-html:not(.icons-on) .ms{visibility:hidden}
-:root{--g-dim:rgba(255,255,255,.66);--g-dim-2:rgba(255,255,255,.55)}
-:root[data-mode="light"]{--g-dim:rgba(0,0,0,.66);--g-dim-2:rgba(0,0,0,.55)}
-@media (prefers-color-scheme: light){
-  :root:not([data-mode="dark"]){--g-dim:rgba(0,0,0,.66);--g-dim-2:rgba(0,0,0,.55)}
-}
-`;
+const ICONS_SCRIPT = `(function(){var d=document;function on(){d.documentElement.classList.add('icons-on')}
+if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function'){d.fonts.ready.then(on)}setTimeout(on,1500);})();`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const c = await cookies();
@@ -75,53 +56,43 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const name = c.get("px_name")?.value ?? null;
   const hasVid = !!c.get("px_vid")?.value;
 
-  let lebay = false, reduce = false;
-  const rawMotion = c.get("px_motion")?.value;
-  if (rawMotion) {
-    try {
-      const m = JSON.parse(decodeURIComponent(rawMotion)) as { lebay?: boolean; reduce?: boolean };
-      lebay = !!m.lebay; reduce = !!m.reduce;
-    } catch { /* abaikan */ }
-  }
+  let flow = DEFAULT_FLOW;
+  const rawFlow = c.get("px_flow")?.value;
+  if (rawFlow) { try { flow = normalizeFlow(JSON.parse(decodeURIComponent(rawFlow))); } catch {} }
 
-  const { light } = schemeVars();
   const style = {
-    ...Object.fromEntries(Object.entries(light).map(([k, v]) => [`--md-${k}`, v])),
-    "--mo": reduce ? "0" : lebay ? "2" : "1"
+    ...flowVars(flow),
+    "--mo": flow.reduce ? "0" : "1"
   } as CSSProperties;
 
   const base = siteUrl();
-  const siteLd = {
+  const ld = {
     "@context": "https://schema.org", "@type": "WebSite",
     name: "F4KUYY", url: base, inLanguage: "id-ID",
     potentialAction: {
       "@type": "SearchAction",
-      target: { "@type": "EntryPoint", urlTemplate: `${base}/?q={search_term_string}` },
+      target: { "@type": "EntryPoint", urlTemplate: `${base}/tulisan?q={search_term_string}` },
       "query-input": "required name=search_term_string"
     }
   };
 
   return (
-    <html lang="id" data-mode={mode} data-lebay={lebay && !reduce ? "on" : "off"} data-motion={reduce ? "reduce" : "full"} style={style}>
+    <html lang="id" data-mode={mode} data-wall={flow.wallpaper} data-clock={flow.clock}
+      data-motion={flow.reduce ? "reduce" : "full"} style={style}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&family=Barlow+Condensed:wght@200;300;400&display=swap" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
         <link rel="alternate" type="application/rss+xml" title="F4KUYY" href="/feed.xml" />
         <style id="px-theme" dangerouslySetInnerHTML={{ __html: themeCss() }} />
-        <style id="px-a11y" dangerouslySetInnerHTML={{ __html: A11Y_CSS }} />
         <script dangerouslySetInnerHTML={{ __html: ICONS_SCRIPT }} />
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteLd) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
       </head>
       <body>
-        <SeaBackground />
         <Providers initial={{ seed: "mono", mode, consent, name, hasVid }}>
+          <OSShell />
           <PageShell>{children}</PageShell>
-          <Footer />
-          <BottomNav />
-          <Alive />
-          <CommandPalette />
         </Providers>
       </body>
     </html>

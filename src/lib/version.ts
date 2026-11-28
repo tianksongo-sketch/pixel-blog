@@ -1,2 +1,2 @@
-export const BUILD = "glass-v13";
-export const BUILD_LABEL = "v 13 · Liquid Glass";
+export const BUILD = "flowos-14";
+export const BUILD_LABEL = "FlowOS 14";

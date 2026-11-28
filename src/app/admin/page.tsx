@@ -1,25 +1,24 @@
 import type { Metadata } from "next";
-import { TopAppBar } from "@/components/TopAppBar";
 import { AdminApp } from "@/components/AdminApp";
 import { BackupPanel } from "@/components/BackupPanel";
 import { AdminPower } from "@/components/AdminPower";
+import { AppFrame } from "@/components/os/AppFrame";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Admin",
+  title: "Studio",
   robots: { index: false, follow: false, nocache: true }
 };
 
 export default function AdminPage() {
   return (
-    <>
-      <TopAppBar title="Admin" back />
+    <AppFrame title="Studio" icon="edit_note" gradient="linear-gradient(145deg,#FFB020,#FF6A3D)">
       <AdminApp />
-      <div className="container" style={{ paddingBottom: 140 }}>
+      <div className="container" style={{ paddingBottom: 40 }}>
         <AdminPower />
         <BackupPanel />
       </div>
-    </>
+    </AppFrame>
   );
 }
