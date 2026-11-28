@@ -8,52 +8,60 @@ import { Wallpaper } from "./Wallpaper";
 import { FlowControls } from "./FlowControls";
 import { StatusClock } from "./Clock";
 import { DEFAULT_FLOW, getFlow, loadFlow, setFlow, subscribeFlow, buzz, blip, type FlowPrefs } from "@/lib/flow";
+import { addFrameTask, bindScrollState, cachedRect, invalidateRect, perf } from "@/lib/perf";
 import { useApp } from "../Providers";
 
 type Item = { id: string; title: string; excerpt: string; readMin: number };
 
+/* NAV tanpa "Atur": semua kontrol hidup di Pusat Kontrol & Flow Studio. */
 const NAV = [
-  { href: "/", label: "Beranda", icon: "home" },
-  { href: "/about", label: "Tentang", icon: "info" },
-  { href: "/admin", label: "Studio", icon: "edit_note" },
-  { href: "/pengaturan", label: "Atur", icon: "tune" }
+  { href: "/", label: "Beranda", icon: "home", g: "linear-gradient(145deg,#7A3CFF,#4DA3FF)" },
+  { href: "/about", label: "Tentang", icon: "info", g: "linear-gradient(145deg,#0FB5C9,#3DDC84)" },
+  { href: "/admin", label: "Studio", icon: "edit_note", g: "linear-gradient(145deg,#FFB020,#FF6A3D)" }
 ];
 
 function VSlider({ value, min, max, icon, label, onChange }: {
   value: number; min: number; max: number; icon: string; label: string; onChange: (v: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const fillRef = useRef<HTMLDivElement>(null);
   const drag = useRef(false);
-  const pending = useRef(value);
-  const pct = ((value - min) / (max - min)) * 100;
+  const box = useRef({ top: 0, height: 1 });
+  const last = useRef(value);
+  const pct = (value - min) / (max - min);
+
+  useEffect(() => {
+    last.current = value;
+    if (fillRef.current && !drag.current) fillRef.current.style.setProperty("--v", String(pct));
+  }, [pct, value]);
+
   const setFrom = (y: number) => {
-    const el = ref.current; if (!el) return;
-    const r = el.getBoundingClientRect();
-    const p = Math.min(1, Math.max(0, 1 - (y - r.top) / r.height));
-    const next = Math.round(min + p * (max - min));
-    pending.current = next;
-    const fill = el.querySelector<HTMLElement>(".cc-vs-fill");
-    if (fill) fill.style.height = `${((next - min) / (max - min)) * 100}%`;
-    el.setAttribute("aria-valuenow", String(next));
+    const p = Math.min(1, Math.max(0, 1 - (y - box.current.top) / box.current.height));
+    if (fillRef.current) fillRef.current.style.setProperty("--v", p.toFixed(4));
+    const v = Math.round(min + p * (max - min));
+    if (v !== last.current) { last.current = v; onChange(v); }
   };
-  const finish = () => {
-    if (!drag.current) return;
-    drag.current = false;
-    onChange(pending.current);
-    blip(700);
-  };
+
   return (
     <div className="cc-vs" ref={ref} role="slider" aria-label={label} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} tabIndex={0}
-      onPointerDown={(e) => { drag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} setFrom(e.clientY); buzz(4); }}
+      onPointerDown={(e) => {
+        const el = ref.current; if (!el) return;
+        invalidateRect(el);
+        const r = cachedRect(el);
+        box.current = { top: r.top, height: r.height || 1 };
+        drag.current = true;
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+        setFrom(e.clientY); buzz(4);
+      }}
       onPointerMove={(e) => { if (drag.current) setFrom(e.clientY); }}
-      onPointerUp={finish}
-      onPointerCancel={finish}
+      onPointerUp={() => { drag.current = false; blip(700); }}
+      onPointerCancel={() => { drag.current = false; }}
       onKeyDown={(e) => {
         if (e.key === "ArrowUp") { e.preventDefault(); onChange(Math.min(max, value + 4)); }
         if (e.key === "ArrowDown") { e.preventDefault(); onChange(Math.max(min, value - 4)); }
       }}>
       <span className="cc-vs-lab">{label}</span>
-      <div className="cc-vs-fill" style={{ height: `${pct}%` }} />
+      <div className="cc-vs-fill" ref={fillRef} style={{ ["--v" as string]: pct }} />
       <Icon name={icon} size={21} />
     </div>
   );
@@ -65,29 +73,40 @@ export function OSShell() {
   const { mode, setMode } = useApp();
   const [prefs, setPrefs] = useState<FlowPrefs>(DEFAULT_FLOW);
   const [panel, setPanel] = useState<"none" | "cc" | "notif">("none");
+  const [capOpen, setCapOpen] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [unlocked, setUnlocked] = useState(true);
   const capTextRef = useRef<HTMLSpanElement>(null);
-  const capBarRef = useRef<HTMLElement>(null);
+  const laFillRef = useRef<HTMLDivElement>(null);
+  const laCarRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLElement>(null);
   const pctRef = useRef<HTMLSpanElement>(null);
-  const labelRef = useRef<HTMLSpanElement>(null);
+  const laTrackW = useRef(0);
+  const lastPct = useRef(-1);
 
   const app = pathname.startsWith("/post/") ? "Baca"
     : pathname.startsWith("/about") ? "Tentang"
     : pathname.startsWith("/admin") ? "Studio"
-    : pathname.startsWith("/pengaturan") ? "Pengaturan"
     : "Beranda";
   const appRef = useRef(app); appRef.current = app;
 
   useEffect(() => {
     setPrefs(loadFlow());
     const un = subscribeFlow(setPrefs);
+    const unScroll = bindScrollState();
     try { setUnlocked(sessionStorage.getItem("px:unlocked") === "1" || !getFlow().lock); }
     catch { setUnlocked(!getFlow().lock); }
-    const onResize = () => setPrefs((p) => { const n = { ...p }; return n; });
+    let t = 0;
+    const onResize = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => {
+        const q = perf().tier;
+        if (document.documentElement.dataset.quality !== q) document.documentElement.dataset.quality = q;
+        laTrackW.current = 0;
+      }, 200);
+    };
     window.addEventListener("resize", onResize, { passive: true });
-    return () => { un(); window.removeEventListener("resize", onResize); };
+    return () => { un(); unScroll(); window.removeEventListener("resize", onResize); window.clearTimeout(t); };
   }, []);
 
   useEffect(() => {
@@ -99,39 +118,42 @@ export function OSShell() {
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => { setPanel("none"); }, [pathname]);
+  useEffect(() => { setPanel("none"); setCapOpen(false); lastPct.current = -1; }, [pathname]);
 
-  /* progres ditulis langsung ke DOM — tidak ada re-render React per frame */
+  /* "Pengaturan" dari palet perintah / pintasan G-T membuka Pusat Kontrol. */
   useEffect(() => {
-    let raf = 0;
-    const write = () => {
-      raf = 0;
-      const d = document.documentElement;
-      const max = d.scrollHeight - window.innerHeight;
-      const p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+    const open = () => setPanel("cc");
+    window.addEventListener("px:open-settings", open);
+    return () => window.removeEventListener("px:open-settings", open);
+  }, []);
+
+  useEffect(() => {
+    const stop = addFrameTask((y, mt) => {
+      const p = mt.scrollMax > 0 ? Math.min(1, Math.max(0, y / mt.scrollMax)) : 0;
       const pct = Math.round(p * 100);
-      const w = `${pct}%`;
-      if (capBarRef.current) capBarRef.current.style.width = w;
-      if (trackRef.current) trackRef.current.style.width = w;
+      if (pct === lastPct.current) return;
+      lastPct.current = pct;
+      const sx = `scaleX(${p.toFixed(4)})`;
+      if (laFillRef.current) laFillRef.current.style.transform = sx;
+      if (laCarRef.current) {
+        if (!laTrackW.current) {
+          const tr = laCarRef.current.parentElement;
+          if (tr) laTrackW.current = cachedRect(tr).width || 1;
+        }
+        laCarRef.current.style.transform = `translate(${(p * laTrackW.current).toFixed(1)}px,-50%)`;
+      }
+      if (trackRef.current) trackRef.current.style.width = `${pct}%`;
       if (pctRef.current) pctRef.current.textContent = `${pct}% halaman`;
       if (capTextRef.current) {
         capTextRef.current.textContent = appRef.current === "Baca" ? `Membaca · ${pct}%` : appRef.current;
       }
-    };
-    const onScroll = () => { if (!raf) raf = requestAnimationFrame(write); };
-    write();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
+    });
+    return stop;
   }, [pathname]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPanel("none");
+      if (e.key === "Escape") { setPanel("none"); setCapOpen(false); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") { e.preventDefault(); setPanel((p) => p === "cc" ? "none" : "cc"); }
     };
     window.addEventListener("keydown", onKey);
@@ -158,7 +180,7 @@ export function OSShell() {
   };
   const openSearch = () => {
     setPanel("none");
-    if (pathname !== "/") { router.push("/"); setTimeout(() => window.dispatchEvent(new Event("px:focus-search")), 520); }
+    if (pathname !== "/") { router.push("/"); setTimeout(() => window.dispatchEvent(new Event("px:focus-search")), 420); }
     else window.dispatchEvent(new Event("px:focus-search"));
   };
 
@@ -174,7 +196,10 @@ export function OSShell() {
           </button>
         </div>
 
-        <div className="capsule" role="status" aria-live="off">
+        <div className="capsule" role="button" tabIndex={0} aria-expanded={capOpen}
+          aria-label={`Aktivitas: ${app}`}
+          onClick={() => { setCapOpen((v) => !v); buzz(6); blip(760); }}
+          onKeyDown={(e) => { if (e.key === "Enter") setCapOpen((v) => !v); }}>
           <span className="cap-dot" />
           <span className="cap-t" ref={capTextRef}>{app}</span>
         </div>
@@ -193,6 +218,49 @@ export function OSShell() {
           </button>
         </div>
       </div>
+
+      {/* Live Activity: kapsul melebar jadi kartu perjalanan baca */}
+      <AnimatePresence>
+        {capOpen && (
+          <motion.div className="live-act" role="dialog" aria-label="Aktivitas langsung"
+            initial={{ opacity: 0, y: -14, scale: .94 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: .96 }}
+            transition={{ type: "spring", stiffness: 420, damping: 32, mass: .8 }}>
+            <div className="la-head">
+              <Icon name={app === "Baca" ? "auto_stories" : "apps"} size={18} />
+              <b>{app === "Baca" ? "Sedang membaca" : `Di ${app}`}</b>
+              <button className="sbar-btn" aria-label="Tutup aktivitas" onClick={() => setCapOpen(false)}><Icon name="close" size={17} /></button>
+            </div>
+            {app === "Baca" ? (
+              <>
+                <div className="la-track">
+                  <div className="la-fill" ref={laFillRef} />
+                  <span className="la-node" style={{ left: "0%" }} />
+                  <span className="la-node" style={{ left: "50%" }} />
+                  <span className="la-node" style={{ left: "100%" }} />
+                  <span className="la-car" ref={laCarRef} style={{ left: 0 }}><Icon name="menu_book" size={14} /></span>
+                </div>
+                <div className="la-labels"><span>Awal</span><span>Isi</span><span>Komentar</span></div>
+              </>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "var(--ink2)" }}>
+                {items[0]?.title ?? "Belum ada tulisan."}
+              </p>
+            )}
+            <div className="la-row">
+              <button className="btn b-tonal" onClick={() => { setCapOpen(false); goHome(); }}><Icon name="home" size={16} />Beranda</button>
+              {items[0] && (
+                <button className="btn b-text" onClick={() => {
+                  setCapOpen(false);
+                  window.dispatchEvent(new CustomEvent("px:navigate", { detail: { href: `/post/${items[0].id}` } }));
+                }}>
+                  <Icon name="play_arrow" size={16} />Lanjutkan baca
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <nav className="leftrail" aria-label="Navigasi utama">
         <Link href="/" className="lr-brand" aria-label="F4KUYY"><Icon name="blur_on" size={22} /></Link>
@@ -215,7 +283,7 @@ export function OSShell() {
         </button>
       </nav>
 
-      <aside className="rail" aria-label="Panel tampilan">
+      <aside className="rail" aria-label="Flow Studio">
         <div className="rail-h">
           <Icon name="tune" size={17} /><b>Flow Studio</b>
           <button className={`sbar-btn${prefs.sound ? " on" : ""}`} aria-label="Suara" onClick={toggleSound}>
@@ -230,7 +298,7 @@ export function OSShell() {
             <b style={{ fontSize: 13.5 }}>{app}</b>
             <span ref={pctRef} style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink3)" }}>0% halaman</span>
           </div>
-          <div className="cc-track"><i ref={trackRef} style={{ width: "0%" }} /></div>
+          <div className="cc-track"><i ref={trackRef} /></div>
         </div>
 
         {items.length > 0 && (
@@ -251,36 +319,41 @@ export function OSShell() {
         {panel !== "none" && (
           <>
             <motion.div className="shade-scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: .18 }} onClick={() => setPanel("none")} />
+              transition={{ duration: .16 }} onClick={() => setPanel("none")} />
             <motion.div className="shade" role="dialog" aria-modal="true" aria-label={panel === "cc" ? "Pusat kontrol" : "Notifikasi"}
-              initial={{ opacity: 0, y: -20, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -14, scale: .98 }} transition={{ type: "spring", stiffness: 380, damping: 32 }}>
+              initial={{ opacity: 0, y: -18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
+              transition={{ type: "spring", stiffness: 420, damping: 34, mass: .8 }}>
               {panel === "cc" ? (
                 <>
                   <div className="shade-h">
                     <Icon name="tune" size={19} /><h2>Pusat kontrol</h2>
                     <button className="sbar-btn" aria-label="Tutup" onClick={() => setPanel("none")}><Icon name="close" size={19} /></button>
                   </div>
+
                   <div className="cc-tiles">
                     <button className="cc-tile" onClick={cycleMode}>
-                      <span className="ic"><Icon name={mode === "light" ? "light_mode" : mode === "dark" ? "dark_mode" : "brightness_auto"} size={19} /></span>
+                      <span className="ic"><Icon name={mode === "light" ? "light_mode" : mode === "dark" ? "dark_mode" : "brightness_auto"} size={20} /></span>
                       <span><b>Tema</b><span>{mode === "auto" ? "Otomatis" : mode === "light" ? "Terang" : "Gelap"}</span></span>
                     </button>
                     <button className="cc-tile" onClick={cycleWall}>
-                      <span className="ic"><Icon name="wallpaper" size={19} /></span>
+                      <span className="ic"><Icon name="wallpaper" size={20} /></span>
                       <span><b>Wallpaper</b><span>{prefs.wallpaper}</span></span>
                     </button>
                   </div>
+
                   <div className="cc-mid">
                     <div className="cc-media">
                       <div className="cc-media-top">
-                        <span className="cc-art" style={{ display: "grid", placeItems: "center" }}><Icon name="auto_stories" size={19} /></span>
-                        <span className="cc-meta"><b>{items[0]?.title ?? "F4KUYY"}</b><span>{app}</span></span>
+                        <span className="cc-art"><Icon name="auto_stories" size={20} /></span>
+                        <span className="cc-meta">
+                          <b className="mq"><span>{items[0]?.title ?? "F4KUYY"}</span></b>
+                          <span className="sub">{app === "Baca" ? "Sedang dibaca" : "Tulisan terbaru"}</span>
+                        </span>
                       </div>
-                      <div className="cc-track"><i ref={capBarRef} style={{ width: "0%" }} /></div>
+                      <div className="cc-track"><i ref={trackRef} style={{ width: "0%" }} /></div>
                       <div className="cc-ctrl">
                         <button className="sbar-btn" aria-label="Beranda" onClick={goHome}><Icon name="skip_previous" size={19} /></button>
-                        <button className="sbar-btn" aria-label="Tulisan terbaru"
+                        <button className="sbar-btn" aria-label="Buka tulisan terbaru"
                           onClick={() => { setPanel("none"); if (items[0]) window.dispatchEvent(new CustomEvent("px:navigate", { detail: { href: `/post/${items[0].id}` } })); }}>
                           <Icon name="play_arrow" size={23} />
                         </button>
@@ -290,24 +363,33 @@ export function OSShell() {
                     <VSlider value={prefs.brightness} min={40} max={100} icon="light_mode" label="Cahaya" onChange={(v) => setPrefs(setFlow({ brightness: v }))} />
                     <VSlider value={prefs.blur} min={0} max={40} icon="blur_on" label="Kaca" onChange={(v) => setPrefs(setFlow({ blur: v }))} />
                   </div>
+
                   <div className="cc-dots">
-                    {([
-                      { k: "sound", icon: "volume_up", label: "Suara" },
-                      { k: "haptic", icon: "vibration", label: "Getar" },
-                      { k: "reduce", icon: "motion_photos_off", label: "Tenang" },
-                      { k: "lock", icon: "lock", label: "Kunci" }
-                    ] as const).map((d) => (
-                      <button key={d.k} className={`cc-dot${prefs[d.k] ? " on" : ""}`} aria-pressed={prefs[d.k]} aria-label={d.label} title={d.label}
-                        onClick={() => { const v = !prefs[d.k]; setPrefs(setFlow({ [d.k]: v } as Partial<FlowPrefs>)); buzz(8); if (d.k === "sound" && v) blip(880); }}>
-                        <Icon name={d.icon} size={20} />
+                    <button className={`cc-dot ring${prefs.sound ? " on" : ""}`} aria-pressed={prefs.sound} aria-label="Suara"
+                      onClick={() => { const v = !prefs.sound; setPrefs(setFlow({ sound: v })); if (v) blip(880); buzz(8); }}>
+                      <Icon name={prefs.sound ? "volume_up" : "volume_off"} size={21} />
+                    </button>
+                    <button className={`cc-dot ring${prefs.haptic ? " on" : ""}`} aria-pressed={prefs.haptic} aria-label="Getar"
+                      onClick={() => { const v = !prefs.haptic; setPrefs(setFlow({ haptic: v })); buzz(8); }}>
+                      <Icon name="vibration" size={21} />
+                    </button>
+                    <div className="cc-pill">
+                      <button className={`cc-dot${prefs.reduce ? " on" : ""}`} aria-pressed={prefs.reduce} aria-label="Kurangi gerak"
+                        onClick={() => setPrefs(setFlow({ reduce: !prefs.reduce }))}>
+                        <Icon name="motion_photos_off" size={18} />
                       </button>
-                    ))}
+                      <button className={`cc-dot${prefs.lock ? " on" : ""}`} aria-pressed={prefs.lock} aria-label="Layar kunci"
+                        onClick={() => setPrefs(setFlow({ lock: !prefs.lock }))}>
+                        <Icon name="lock" size={18} />
+                      </button>
+                      <button className="cc-dot danger" aria-label="Kunci mode admin"
+                        onClick={() => { window.dispatchEvent(new Event("px:lock-admin")); buzz(12); }}>
+                        <Icon name="shield" size={18} />
+                      </button>
+                    </div>
                   </div>
+
                   <FlowControls prefs={prefs} onChange={setPrefs} compact />
-                  <button className="fc-act" style={{ width: "100%", marginTop: 12, height: 44 }}
-                    onClick={() => { setPanel("none"); router.push("/pengaturan"); }}>
-                    <Icon name="settings" size={16} />Pengaturan lengkap
-                  </button>
                 </>
               ) : (
                 <>
@@ -318,9 +400,9 @@ export function OSShell() {
                   {items.length === 0 && <p style={{ color: "var(--ink3)", fontSize: 13.5 }}>Belum ada tulisan.</p>}
                   {items.map((n) => (
                     <Link key={n.id} href={`/post/${n.id}`} className="notif" onClick={() => setPanel("none")}>
-                      <span className="notif-ic"><Icon name="article" size={18} /></span>
+                      <span className="notif-ic"><Icon name="article" size={19} /></span>
                       <span className="notif-b"><b>{n.title}</b><p>{n.excerpt}</p></span>
-                      <Icon name="chevron_right" size={18} />
+                      <span className="notif-t">{n.readMin}m<Icon name="expand_more" size={16} /></span>
                     </Link>
                   ))}
                 </>
@@ -330,19 +412,20 @@ export function OSShell() {
         )}
       </AnimatePresence>
 
+      {/* Dock tray: ikon glossy tanpa label, tanpa tombol Atur */}
       <nav className="dockm" aria-label="Navigasi bawah">
-        <Link href="/" className={pathname === "/" ? "on" : ""} aria-current={pathname === "/" ? "page" : undefined}>
-          <span className="di"><Icon name="home" size={20} fill={pathname === "/"} /></span><small>Beranda</small>
+        <Link href="/" className={pathname === "/" ? "on" : ""} aria-label="Beranda" aria-current={pathname === "/" ? "page" : undefined}>
+          <span className="dk" style={{ background: NAV[0].g }}><Icon name="home" size={22} fill={pathname === "/"} /></span>
         </Link>
         <button onClick={openSearch} aria-label="Cari tulisan">
-          <span className="di"><Icon name="search" size={20} /></span><small>Cari</small>
+          <span className="dk" style={{ background: "linear-gradient(145deg,#3DDC84,#0FB5C9)" }}><Icon name="search" size={22} /></span>
         </button>
-        <Link href="/about" className={pathname.startsWith("/about") ? "on" : ""}>
-          <span className="di"><Icon name="info" size={20} fill={pathname.startsWith("/about")} /></span><small>Tentang</small>
+        <Link href="/about" className={pathname.startsWith("/about") ? "on" : ""} aria-label="Tentang">
+          <span className="dk" style={{ background: NAV[1].g }}><Icon name="info" size={22} fill={pathname.startsWith("/about")} /></span>
         </Link>
-        <button onClick={() => { setPanel((p) => p === "cc" ? "none" : "cc"); buzz(6); blip(640); }} aria-label="Pusat kontrol">
-          <span className="di"><Icon name="tune" size={20} /></span><small>Atur</small>
-        </button>
+        <Link href="/admin" className={pathname.startsWith("/admin") ? "on" : ""} aria-label="Studio admin">
+          <span className="dk" style={{ background: NAV[2].g }}><Icon name="edit_note" size={22} fill={pathname.startsWith("/admin")} /></span>
+        </Link>
       </nav>
 
       <AnimatePresence>
