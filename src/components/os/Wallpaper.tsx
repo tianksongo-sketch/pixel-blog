@@ -6,6 +6,19 @@ export function Wallpaper() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const root = document.documentElement;
+    const syncVisibility = () => {
+      root.toggleAttribute("data-page-hidden", document.visibilityState === "hidden");
+    };
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", syncVisibility);
+      root.removeAttribute("data-page-hidden");
+    };
+  }, []);
+
+  useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (flowCalm() || window.matchMedia("(pointer: coarse)").matches) return;
@@ -24,7 +37,10 @@ export function Wallpaper() {
       if (!running) { running = true; raf = requestAnimationFrame(loop); }
     };
     window.addEventListener("pointermove", onMove, { passive: true });
-    return () => { window.removeEventListener("pointermove", onMove); if (raf) cancelAnimationFrame(raf); };
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   return (

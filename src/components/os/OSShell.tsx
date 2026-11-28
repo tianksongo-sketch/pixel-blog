@@ -24,19 +24,30 @@ function VSlider({ value, min, max, icon, label, onChange }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef(false);
+  const pending = useRef(value);
   const pct = ((value - min) / (max - min)) * 100;
   const setFrom = (y: number) => {
     const el = ref.current; if (!el) return;
     const r = el.getBoundingClientRect();
     const p = Math.min(1, Math.max(0, 1 - (y - r.top) / r.height));
-    onChange(Math.round(min + p * (max - min)));
+    const next = Math.round(min + p * (max - min));
+    pending.current = next;
+    const fill = el.querySelector<HTMLElement>(".cc-vs-fill");
+    if (fill) fill.style.height = `${((next - min) / (max - min)) * 100}%`;
+    el.setAttribute("aria-valuenow", String(next));
+  };
+  const finish = () => {
+    if (!drag.current) return;
+    drag.current = false;
+    onChange(pending.current);
+    blip(700);
   };
   return (
     <div className="cc-vs" ref={ref} role="slider" aria-label={label} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} tabIndex={0}
       onPointerDown={(e) => { drag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} setFrom(e.clientY); buzz(4); }}
       onPointerMove={(e) => { if (drag.current) setFrom(e.clientY); }}
-      onPointerUp={() => { drag.current = false; blip(700); }}
-      onPointerCancel={() => { drag.current = false; }}
+      onPointerUp={finish}
+      onPointerCancel={finish}
       onKeyDown={(e) => {
         if (e.key === "ArrowUp") { e.preventDefault(); onChange(Math.min(max, value + 4)); }
         if (e.key === "ArrowDown") { e.preventDefault(); onChange(Math.max(min, value - 4)); }

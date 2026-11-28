@@ -45,8 +45,14 @@ export async function generateViewport(): Promise<Viewport> {
   };
 }
 
-const ICONS_SCRIPT = `(function(){var d=document;function on(){d.documentElement.classList.add('icons-on')}
-if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function'){d.fonts.ready.then(on)}setTimeout(on,1500);})();`;
+const ICONS_SCRIPT = `(function(){
+  var d=document,n=0,t;
+  function ok(){try{return !!(d.fonts&&d.fonts.check('16px "Material Symbols Rounded"'))}catch(e){return false}}
+  function on(){if(!ok())return false;d.documentElement.classList.add('icons-on');if(t)clearInterval(t);return true}
+  if(on())return;
+  t=setInterval(function(){n++;if(on()||n>=40)clearInterval(t)},250);
+  if(d.fonts&&d.fonts.ready&&typeof d.fonts.ready.then==='function')d.fonts.ready.then(on);
+})();`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const c = await cookies();

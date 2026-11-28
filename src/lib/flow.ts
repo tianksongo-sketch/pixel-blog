@@ -61,6 +61,16 @@ export type NumKey = keyof typeof LIMITS;
 
 const KEY = "px:flow";
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function persistFlow(): void {
+  if (persistTimer !== null) clearTimeout(persistTimer);
+  persistTimer = null;
+  try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* abaikan */ }
+  try {
+    document.cookie = `px_flow=${encodeURIComponent(JSON.stringify(current))};path=/;max-age=31536000;SameSite=Lax`;
+  } catch { /* abaikan */ }
+}
 
 /* ---- rotasi hue dihitung di JS, bukan filter CSS per-frame ---- */
 function toHsl(hex: string): [number, number, number] {
@@ -172,10 +182,8 @@ export function loadFlow(): FlowPrefs {
 
 export function setFlow(patch: Partial<FlowPrefs>): FlowPrefs {
   current = normalizeFlow({ ...current, ...patch });
-  try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* abaikan */ }
-  try {
-    document.cookie = `px_flow=${encodeURIComponent(JSON.stringify(current))};path=/;max-age=31536000;SameSite=Lax`;
-  } catch { /* abaikan */ }
+  if (persistTimer !== null) clearTimeout(persistTimer);
+  persistTimer = setTimeout(persistFlow, 180);
   applyFlow(current);
   listeners.forEach((l) => l({ ...current }));
   return { ...current };

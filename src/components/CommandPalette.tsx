@@ -63,7 +63,7 @@ export function CommandPalette() {
     const n = q.trim().toLowerCase();
     const actions: Row[] = [
       { key: "a-home", group: "Aksi", icon: "home", title: "Beranda", sub: "Daftar tulisan", run: () => go("/") },
-      { key: "a-about", group: "Aksi", icon: "info", title: "About blog", sub: "Tentang F4KUYY", run: () => go("/about") },
+      { key: "a-about", group: "Aksi", icon: "info", title: "Tentang", sub: "Tentang F4KUYY", run: () => go("/about") },
       { key: "a-admin", group: "Aksi", icon: "edit_note", title: "Panel admin", sub: "Tulis & kelola", run: () => go("/admin") },
       { key: "a-set", group: "Aksi", icon: "tune", title: "Pengaturan tampilan", sub: "Tema · Lebay · Haptic", run: () => { close(); window.dispatchEvent(new Event("px:open-settings")); } },
       { key: "a-mode", group: "Aksi", icon: mode === "dark" ? "light_mode" : "dark_mode", title: mode === "dark" ? "Mode terang" : "Mode gelap", sub: "Ganti tema", run: () => { setMode(mode === "dark" ? "light" : "dark"); haptic(8); close(); } },

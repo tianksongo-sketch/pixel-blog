@@ -8,7 +8,7 @@
   --font-ui:"Outfit","Inter Tight",system-ui,sans-serif;
   --font-clock:"Barlow Condensed","Outfit",system-ui,sans-serif;
   --ok:#3DDC84;--warn:#FFB020;--bad:#FF4D5E;--info:#4DA3FF;
-  --ink:#F5F1FF;--ink2:rgba(245,241,255,.76);--ink3:rgba(245,241,255,.56);
+  --ink:#F5F1FF;--ink2:rgba(245,241,255,.82);--ink3:rgba(245,241,255,.76);
   --edge:rgba(255,255,255,.22);--edge2:rgba(255,255,255,.40);
   --hi:rgba(255,255,255,.58);--lo:rgba(255,255,255,.09);
   --drop:0 16px 40px rgba(6,3,20,.40);
@@ -19,7 +19,7 @@
   --acc:#FFB020;--acc2:#FF6A3D;
 }
 :root[data-mode="light"]{
-  --ink:#171226;--ink2:rgba(23,18,38,.76);--ink3:rgba(23,18,38,.58);
+  --ink:#171226;--ink2:rgba(23,18,38,.82);--ink3:rgba(23,18,38,.72);
   --edge:rgba(255,255,255,.7);--edge2:rgba(23,18,38,.18);
   --hi:rgba(255,255,255,.95);--lo:rgba(23,18,38,.05);
   --drop:0 14px 34px rgba(30,20,60,.14);--panel:rgba(255,255,255,.66);
@@ -27,7 +27,7 @@
 }
 @media (prefers-color-scheme:light){
   :root:not([data-mode="dark"]){
-    --ink:#171226;--ink2:rgba(23,18,38,.76);--ink3:rgba(23,18,38,.58);
+    --ink:#171226;--ink2:rgba(23,18,38,.82);--ink3:rgba(23,18,38,.72);
     --edge:rgba(255,255,255,.7);--edge2:rgba(23,18,38,.18);
     --hi:rgba(255,255,255,.95);--lo:rgba(23,18,38,.05);
     --drop:0 14px 34px rgba(30,20,60,.14);--panel:rgba(255,255,255,.66);
@@ -89,6 +89,7 @@ button{font:inherit;color:inherit}
 :root[data-quality="lite"] .wall .o4,:root[data-quality="lite"] .wall .o5{display:none}
 :root[data-quality="lite"] .wall-grain{opacity:calc(var(--f-grain)*.22)}
 :root[data-quality="lite"] .wall i{animation-duration:calc(70s/var(--f-speed))}
+:root[data-page-hidden] .wall i,:root[data-page-hidden] .wall-grain{animation-play-state:paused!important}
 
 /* ---------- permukaan ---------- */
 .card,.stat-box,.admin-item,.alp-row,.alp-meter,.alp-preview,.cm-bubble,.cm-input,
@@ -117,6 +118,19 @@ button{font:inherit;color:inherit}
 :root[data-quality="full"] .card,:root[data-quality="full"] .widget{
   backdrop-filter:blur(calc(var(--f-blur)*.7)) saturate(160%);
   -webkit-backdrop-filter:blur(calc(var(--f-blur)*.7)) saturate(160%);
+}
+@media (prefers-reduced-transparency:reduce){
+  .sbar,.shade,.dialog,.sheet,.snackbar,.capsule,.rail,.leftrail,.dockm,.app-head-in,
+  .card,.stat-box,.admin-item,.alp-row,.alp-meter,.alp-preview,.widget,.dock{
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    background:var(--w0)!important;
+  }
+  :root[data-mode="light"] .sbar,:root[data-mode="light"] .shade,
+  :root[data-mode="light"] .dialog,:root[data-mode="light"] .sheet,
+  :root[data-mode="light"] .snackbar,:root[data-mode="light"] .card,
+  :root[data-mode="light"] .widget,:root[data-mode="light"] .dock{
+    background:#F3EFFA!important;
+  }
 }
 .gl{position:relative;border-radius:var(--f-radius);border:1px solid var(--edge);
   background:linear-gradient(152deg,rgba(255,255,255,.13),rgba(255,255,255,.05));
