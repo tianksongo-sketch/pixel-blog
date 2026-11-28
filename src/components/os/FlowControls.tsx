@@ -1,10 +1,9 @@
 "use client";
 import { Icon } from "../ui";
 import {
-  LIMITS, WALLPAPERS, DEFAULT_FLOW, randomFlow, setFlow,
-  type FlowPrefs, type NumKey, type ClockStyle
+  LIMITS, WALLPAPERS, DEFAULT_FLOW, randomFlow, setFlow, buzz, blip,
+  type FlowPrefs, type NumKey, type ClockStyle, type Quality
 } from "@/lib/flow";
-import { buzz, blip } from "@/lib/flow";
 
 const NUMS: Array<{ k: NumKey; label: string }> = [
   { k: "blur", label: "Blur kaca" },
@@ -18,18 +17,19 @@ const NUMS: Array<{ k: NumKey; label: string }> = [
 ];
 
 const CLOCKS: Array<{ id: ClockStyle; label: string }> = [
-  { id: "tall", label: "Tinggi" },
-  { id: "soft", label: "Bulat" },
-  { id: "wide", label: "Lebar" }
+  { id: "tall", label: "Tinggi" }, { id: "soft", label: "Bulat" }, { id: "wide", label: "Lebar" }
+];
+const QUAL: Array<{ id: Quality; label: string }> = [
+  { id: "auto", label: "Auto" }, { id: "lite", label: "Hemat" }, { id: "full", label: "Penuh" }
 ];
 
-export function FlowControls({
-  prefs, onChange, compact = false
-}: { prefs: FlowPrefs; onChange: (p: FlowPrefs) => void; compact?: boolean }) {
+export function FlowControls({ prefs, onChange, compact = false }: {
+  prefs: FlowPrefs; onChange: (p: FlowPrefs) => void; compact?: boolean;
+}) {
   const patch = (p: Partial<FlowPrefs>) => { onChange(setFlow(p)); buzz(5); };
 
   const exportPrefs = () => {
-    const blob = new Blob([JSON.stringify({ format: "flowos-prefs", version: 1, prefs }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ format: "flowos-prefs", version: 2, prefs }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "flowos-tampilan.json";
@@ -45,8 +45,7 @@ export function FlowControls({
         <div className="fc-wall">
           {WALLPAPERS.map((w) => (
             <button key={w.id} type="button" className={`fc-sw${prefs.wallpaper === w.id ? " on" : ""}`}
-              style={{ background: w.swatch }} aria-label={`Wallpaper ${w.name}`}
-              aria-pressed={prefs.wallpaper === w.id}
+              style={{ background: w.swatch }} aria-label={`Wallpaper ${w.name}`} aria-pressed={prefs.wallpaper === w.id}
               onClick={() => { patch({ wallpaper: w.id }); blip(700); }}>
               <span>{w.name}</span>
             </button>
@@ -66,8 +65,7 @@ export function FlowControls({
             </span>
             <input className="fc-range" type="range" min={l.min} max={l.max} step={l.step} value={v}
               style={{ ["--fill" as string]: `${fill}%` }}
-              onChange={(e) => patch({ [k]: Number(e.target.value) } as Partial<FlowPrefs>)}
-              aria-label={label} />
+              onChange={(e) => patch({ [k]: Number(e.target.value) } as Partial<FlowPrefs>)} aria-label={label} />
           </label>
         );
       })}
@@ -76,9 +74,18 @@ export function FlowControls({
         <div className="fc-lab" style={{ marginBottom: 7 }}>Gaya jam</div>
         <div className="fc-seg">
           {CLOCKS.map((c) => (
-            <button key={c.id} type="button" className={prefs.clock === c.id ? "on" : ""}
-              aria-pressed={prefs.clock === c.id}
+            <button key={c.id} type="button" className={prefs.clock === c.id ? "on" : ""} aria-pressed={prefs.clock === c.id}
               onClick={() => { patch({ clock: c.id }); blip(620); }}>{c.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="fc-lab" style={{ marginBottom: 7 }}>Kualitas render</div>
+        <div className="fc-seg">
+          {QUAL.map((c) => (
+            <button key={c.id} type="button" className={prefs.quality === c.id ? "on" : ""} aria-pressed={prefs.quality === c.id}
+              onClick={() => { patch({ quality: c.id }); blip(560); }}>{c.label}</button>
           ))}
         </div>
       </div>
@@ -90,8 +97,7 @@ export function FlowControls({
           { k: "sound", label: "Suara", icon: "volume_up" },
           { k: "lock", label: "Kunci", icon: "lock" }
         ] as const).map((t) => (
-          <button key={t.k} type="button" className={`fc-tog${prefs[t.k] ? " on" : ""}`}
-            aria-pressed={prefs[t.k]}
+          <button key={t.k} type="button" className={`fc-tog${prefs[t.k] ? " on" : ""}`} aria-pressed={prefs[t.k]}
             onClick={() => { patch({ [t.k]: !prefs[t.k] } as Partial<FlowPrefs>); blip(t.k === "sound" ? 900 : 640); }}>
             <Icon name={t.icon} size={16} />{t.label}
           </button>
@@ -111,8 +117,8 @@ export function FlowControls({
       </div>
 
       {!compact && (
-        <p style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6, marginTop: 4 }}>
-          Semua perubahan langsung diterapkan dan disimpan di perangkat ini.
+        <p style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6, marginTop: 2 }}>
+          Mode Hemat memangkas lapisan blur dan orb supaya gulir tetap mulus di ponsel.
         </p>
       )}
     </div>

@@ -1,23 +1,27 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { flowCalm } from "@/lib/flow";
+import { flowCalm, getFlow } from "@/lib/flow";
 
 export function Wallpaper() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || flowCalm() || window.matchMedia("(hover: none)").matches) return;
-    let raf = 0, tx = 0, ty = 0;
+    if (!el) return;
+    if (flowCalm() || window.matchMedia("(pointer: coarse)").matches) return;
+    let raf = 0, tx = 0, ty = 0, cx = 0, cy = 0, running = false;
+    const loop = () => {
+      cx += (tx - cx) * 0.06;
+      cy += (ty - cy) * 0.06;
+      el.style.transform = `translate3d(${cx.toFixed(2)}px, ${cy.toFixed(2)}px, 0)`;
+      if (Math.abs(tx - cx) > 0.05 || Math.abs(ty - cy) > 0.05) raf = requestAnimationFrame(loop);
+      else { running = false; raf = 0; }
+    };
     const onMove = (e: PointerEvent) => {
-      const depth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--f-depth")) || 0;
-      tx = (e.clientX / window.innerWidth - 0.5) * -26 * depth;
-      ty = (e.clientY / window.innerHeight - 0.5) * -18 * depth;
-      if (!raf) raf = requestAnimationFrame(() => {
-        raf = 0;
-        el.style.setProperty("--wx", `${tx.toFixed(1)}px`);
-        el.style.setProperty("--wy", `${ty.toFixed(1)}px`);
-      });
+      const d = getFlow().depth / 100;
+      tx = (e.clientX / window.innerWidth - 0.5) * -22 * d;
+      ty = (e.clientY / window.innerHeight - 0.5) * -16 * d;
+      if (!running) { running = true; raf = requestAnimationFrame(loop); }
     };
     window.addEventListener("pointermove", onMove, { passive: true });
     return () => { window.removeEventListener("pointermove", onMove); if (raf) cancelAnimationFrame(raf); };
